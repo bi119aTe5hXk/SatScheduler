@@ -1,0 +1,269 @@
+//
+//  AddWatchTargetViewModel.swift
+//  SatScheduler
+//
+//  Created by bi119aTe5hXk on 2026/05/16.
+//
+import Foundation
+import Combine
+
+
+@MainActor
+final class AddWatchTargetViewModel: ObservableObject {
+	@Published var satellites: [SatelliteModel] = []
+	@Published var transmitters: [Transmitter] = []
+	@Published var stations: [GroundStation] = []
+
+	@Published var selectedSatelliteID: String?
+	@Published var selectedTransmitterID: String?
+	@Published var selectedStationIDs: Set<Int> = []
+	@Published var centerFrequencyMHzText = ""
+
+	@Published var satelliteSearchText = ""
+	@Published var errorMessage: String?
+	@Published var isLoadingSatellites = false
+	@Published var isLoadingTransmitters = false
+	@Published var isLoadingStations = false
+	
+	@Published var stationSearchText = ""
+
+	private let dbService = SatNOGSDBService()
+	private let networkService = SatNOGSNetworkService()
+
+	var filteredSatellites: [SatelliteModel] {
+
+		let keyword = satelliteSearchText
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased()
+		guard !keyword.isEmpty else {
+			return satellites
+		}
+		return satellites.filter { satellite in
+			let displayName = displayName(for: satellite).lowercased()
+			let satID = satellite.id.lowercased()
+			let norad = satellite.norad_cat_id.map(String.init) ?? ""
+			return displayName.contains(keyword)
+				|| satID.contains(keyword)
+				|| norad.contains(keyword)
+		}
+
+	}
+
+	var filteredStations: [GroundStation] {
+		let keyword = stationSearchText
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased()
+
+		guard !keyword.isEmpty else {
+			return stations
+		}
+
+		return stations.filter { station in
+			let idText = String(station.id)
+			let name = station.displayName.lowercased()
+			let status = (station.status ?? "").lowercased()
+			let qthlocator = (station.qthlocator ?? "").lowercased()
+			let owner = (station.owner ?? "").lowercased()
+			let antenna = station.antennaText.lowercased()
+
+			return idText.contains(keyword)
+				|| name.contains(keyword)
+				|| status.contains(keyword)
+				|| qthlocator.contains(keyword)
+				|| owner.contains(keyword)
+				|| antenna.contains(keyword)
+		}
+	}
+	
+	var canSave: Bool {
+		selectedSatelliteID != nil &&
+		selectedTransmitterID != nil &&
+		!selectedStationIDs.isEmpty &&
+		centerFrequencyHz != nil
+	}
+
+	var selectedTransmitter: Transmitter? {
+		guard let selectedTransmitterID else {
+			return nil
+		}
+
+		return transmitters.first { $0.id == selectedTransmitterID }
+	}
+
+	var centerFrequencyHz: Int? {
+		let trimmed = centerFrequencyMHzText.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty, let mhz = Double(trimmed) else {
+			return nil
+		}
+
+		guard mhz > 0 else {
+			return nil
+		}
+
+		return Int((mhz * 1_000_000).rounded())
+	}
+
+	func selectTransmitter(_ transmitter: Transmitter) {
+		selectedTransmitterID = transmitter.id
+
+		if let frequency = transmitter.defaultCenterFrequencyHz {
+			centerFrequencyMHzText = transmitter.formatFrequencyMHz(frequency)
+		} else {
+			centerFrequencyMHzText = ""
+		}
+	}
+
+	func loadInitialData() async {
+		async let satelliteTask: Void = loadSatellites()
+		async let stationTask: Void = loadStations()
+
+		_ = await (satelliteTask, stationTask)
+	}
+
+	func loadSatellites() async {
+		isLoadingSatellites = true
+		defer { isLoadingSatellites = false }
+
+		do {
+			satellites = try await dbService.fetchAliveSatellites()
+		} catch {
+			errorMessage = error.localizedDescription
+		}
+	}
+
+	func loadStations() async {
+		isLoadingStations = true
+		defer { isLoadingStations = false }
+
+		do {
+			stations = try await networkService.fetchOnlineStations()
+		} catch {
+			errorMessage = error.localizedDescription
+		}
+	}
+
+	func loadTransmitters(for satelliteID: String?) async {
+		guard let satelliteID else {
+			transmitters = []
+			selectedTransmitterID = nil
+			centerFrequencyMHzText = ""
+			return
+		}
+
+		isLoadingTransmitters = true
+		defer { isLoadingTransmitters = false }
+
+		do {
+			transmitters = try await dbService.fetchTransmitters(satelliteID: satelliteID)
+			selectedTransmitterID = nil
+			centerFrequencyMHzText = ""
+		} catch {
+			errorMessage = error.localizedDescription
+			transmitters = []
+			selectedTransmitterID = nil
+			centerFrequencyMHzText = ""
+		}
+	}
+
+	func toggleStation(_ station: GroundStation) {
+		if selectedStationIDs.contains(station.id) {
+			selectedStationIDs.remove(station.id)
+		} else {
+			selectedStationIDs.insert(station.id)
+		}
+	}
+
+	func makeWatchTarget() -> WatchTarget? {
+		guard
+			let satelliteID = selectedSatelliteID,
+			let transmitterID = selectedTransmitterID
+		else {
+			return nil
+		}
+
+		let satellite = satellites.first { $0.id == satelliteID }
+		let transmitter = transmitters.first { $0.id == transmitterID }
+		let satelliteName = satellite.map(displayName(for:))
+		let transmitterDescription = transmitter.map(displayName(for:))
+		let centerFrequency = centerFrequencyHz
+		
+		let selectedStations = stations.filter { selectedStationIDs.contains($0.id) }
+
+		let selectedStationNames = Dictionary(
+
+			uniqueKeysWithValues: selectedStations.map { ($0.id, $0.displayName) }
+
+		)
+
+		let selectedStationSnapshots = Dictionary(
+
+			uniqueKeysWithValues: selectedStations.map { station in
+				(
+					station.id,
+					WatchStationSnapshot(
+						id: station.id,
+						name: station.displayName,
+						latitude: station.lat,
+						longitude: station.lng,
+						altitude: station.altitude,
+						minHorizon: station.min_horizon
+					)
+				)
+			}
+
+		)
+
+		return WatchTarget(
+			name: satelliteName ?? satelliteID,
+			satelliteID: satelliteID,
+			satelliteName: satelliteName,
+			transmitterID: transmitterID,
+			transmitterDescription: transmitterDescription,
+			centerFrequency: centerFrequency,
+			stationIDs: Array(selectedStationIDs).sorted(),
+			stationNames: selectedStationNames,
+			stationSnapshots: selectedStationSnapshots,
+			minElevation: nil,
+			enabled: true
+		)
+	}
+
+	func displayName(for satellite: SatelliteModel) -> String {
+		if let name = satellite.name, !name.isEmpty {
+			return name
+		}
+
+		if let names = satellite.names, !names.isEmpty {
+			return names
+		}
+
+		if let norad = satellite.norad_cat_id {
+			return "NORAD \(norad)"
+		}
+
+		return satellite.id
+	}
+
+	func displayName(for transmitter: Transmitter) -> String {
+		let description = transmitter.description?.trimmingCharacters(in: .whitespacesAndNewlines)
+		let mode = transmitter.mode?.trimmingCharacters(in: .whitespacesAndNewlines)
+		let frequencyText = transmitter.downlinkFrequencyText
+
+		let name: String
+		if let description, !description.isEmpty, let mode, !mode.isEmpty {
+			name = "\(description) / \(mode)"
+		} else if let description, !description.isEmpty {
+			name = description
+		} else if let mode, !mode.isEmpty {
+			name = mode
+		} else {
+			name = transmitter.id
+		}
+
+		if frequencyText == "-" {
+			return name
+		}
+
+		return "\(name) / \(frequencyText)"
+	}
+}
