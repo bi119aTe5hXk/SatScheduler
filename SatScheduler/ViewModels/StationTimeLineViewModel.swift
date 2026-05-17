@@ -15,15 +15,16 @@ final class StationTimeLineViewModel: ObservableObject {
 	@Published private var lastUpdatedAt: Date?
 	@Published var refreshingStationID: Int?
 
-	let startDate: Date
-	let endDate: Date
+	@Published private(set) var startDate: Date
+	@Published private(set) var endDate: Date
 
 	private let store = StationScheduleStore.shared
+	private let scheduleWindowDuration: TimeInterval = 3 * 24 * 60 * 60
 
 	init() {
 		let now = Date()
 		startDate = now
-		endDate = now.addingTimeInterval(48 * 60 * 60)
+		endDate = now.addingTimeInterval(scheduleWindowDuration)
 	}
 
 	var cacheStatusText: String {
@@ -60,6 +61,10 @@ final class StationTimeLineViewModel: ObservableObject {
 			refreshingStationID = nil
 		}
 		do {
+			let now = Date()
+			startDate = now
+			endDate = now.addingTimeInterval(scheduleWindowDuration)
+
 			let cache = try await store.refreshSchedule(
 				start: startDate,
 				end: endDate,

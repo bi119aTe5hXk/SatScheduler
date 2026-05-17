@@ -41,6 +41,27 @@ extension ObservationScheduleRequest {
 	}
 }
 
+enum ObservationVettedStatus: String, CaseIterable, Identifiable, Codable {
+	case unknown
+	case bad
+	case good
+
+	var id: String {
+		rawValue
+	}
+
+	var displayName: String {
+		switch self {
+		case .unknown:
+			return "Unknown"
+		case .bad:
+			return "Bad"
+		case .good:
+			return "Good"
+		}
+	}
+}
+
 final class SatNOGSNetworkService {
 
 	private let client: SatNOGSAPIClient
@@ -55,7 +76,7 @@ final class SatNOGSNetworkService {
 		id: Int? = nil,
 		name: String? = nil
 	) async throws -> [GroundStation] {
-		var items: [URLQueryItem] = [
+		let items: [URLQueryItem] = [
 			URLQueryItem(name: "id", value: id.map(String.init) ?? ""),
 			URLQueryItem(name: "name", value: name ?? ""),
 			URLQueryItem(name: "status", value: "2")
@@ -73,15 +94,12 @@ final class SatNOGSNetworkService {
 	func fetchUnknownObservations(
 		observerID: Int
 	) async throws -> [Observation] {
-
-		try await client.get(
-			host: .networkAPI,
-			path: "observations/",
+		try await fetchAllObservationPages(
 			queryItems: [
 				URLQueryItem(name: "status", value: "unknown"),
 				URLQueryItem(name: "observer", value: String(observerID))
 			],
-			requiresToken: true
+			logPrefix: "unknown observations for observer \(observerID)"
 		)
 	}
 	
@@ -114,11 +132,9 @@ final class SatNOGSNetworkService {
 			))
 		}
 
-		return try await client.get(
-			host: .networkAPI,
-			path: "observations/",
+		return try await fetchAllObservationPages(
 			queryItems: items,
-			requiresToken: true
+			logPrefix: "observations"
 		)
 	}
 
@@ -139,19 +155,76 @@ final class SatNOGSNetworkService {
 				URLQueryItem(name: "ground_station", value: String(groundStationID))
 			]
 
-			let stationObservations: [Observation] = try await client.get(
-				host: .networkAPI,
-				path: "observations/",
+			let stationObservations = try await fetchAllObservationPages(
 				queryItems: stationItems,
-				requiresToken: true
+				logPrefix: "future observations for station \(groundStationID)"
 			)
 
-			print("Fetched \(stationObservations.count) future observation(s) for station \(groundStationID)")
 			observations.append(contentsOf: stationObservations)
+			print("Fetched \(stationObservations.count) future observation(s) for station \(groundStationID)")
 		}
 
 		return observations
 	}
+
+	private func fetchAllObservationPages(
+		queryItems: [URLQueryItem],
+		logPrefix: String
+	) async throws -> [Observation] {
+		var observations: [Observation] = []
+		var nextCursor: String?
+		var seenCursors = Set<String>()
+
+		repeat {
+			var pageItems = queryItems
+
+			if let nextCursor {
+				guard !seenCursors.contains(nextCursor) else {
+					break
+				}
+				seenCursors.insert(nextCursor)
+				pageItems.append(URLQueryItem(name: "cursor", value: nextCursor))
+			}
+
+			let page: ObservationListResponse = try await client.get(
+				host: .networkAPI,
+				path: "observations/",
+				queryItems: pageItems,
+				requiresToken: false
+			)
+
+			observations.append(contentsOf: page.results)
+
+			let resolvedNextCursor = page.nextCursor ?? Self.fallbackNextCursor(from: page.results)
+			if let resolvedNextCursor, seenCursors.contains(resolvedNextCursor) {
+				nextCursor = nil
+			} else {
+				nextCursor = resolvedNextCursor
+			}
+
+			print("Fetched page for \(logPrefix): \(page.results.count) observation(s), nextCursor: \(nextCursor ?? "nil")")
+		} while nextCursor != nil
+
+		return observations
+	}
+
+	private static func fallbackNextCursor(from observations: [Observation]) -> String? {
+		guard observations.count >= 25,
+			  let lastObservation = observations.last,
+			  let startString = lastObservation.start,
+			  let startDate = parseObservationDate(startString) else {
+			return nil
+		}
+
+		let position = cursorDateFormatter.string(from: startDate)
+		let encodedPosition = position
+			.replacingOccurrences(of: "+", with: "%2B")
+			.replacingOccurrences(of: " ", with: "+")
+			.replacingOccurrences(of: ":", with: "%3A")
+
+		return Data("p=\(encodedPosition)".utf8).base64EncodedString()
+	}
+
 	private static func parseObservationDate(_ string: String) -> Date? {
 		if let date = observationDateFormatter.date(from: string) {
 			return date
@@ -166,6 +239,22 @@ final class SatNOGSNetworkService {
 		fallbackFormatter.timeZone = TimeZone(secondsFromGMT: 0)
 		fallbackFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
 		return fallbackFormatter.date(from: string)
+	}
+
+	func updateObservationVettedStatus(
+		observationID: Int,
+		status: ObservationVettedStatus
+	) async throws -> Observation {
+		let body = UpdateObservationVettedStatusRequest(
+			vetted_status: status.rawValue
+		)
+
+		return try await client.patchJSON(
+			host: .networkAPI,
+			path: "observations/\(observationID)/",
+			body: body,
+			requiresToken: true
+		)
 	}
 
 	func createObservation(
@@ -205,6 +294,40 @@ final class SatNOGSNetworkService {
 		StationScheduleStore.shared.mergeCreatedObservations(observations)
 		return observations
 	}
+	
+	private struct ObservationListResponse: Decodable {
+		let results: [Observation]
+		let nextCursor: String?
+
+		private enum CodingKeys: String, CodingKey {
+			case results
+			case next
+		}
+
+		init(from decoder: Decoder) throws {
+			if let arrayContainer = try? decoder.singleValueContainer(),
+			   let observations = try? arrayContainer.decode([Observation].self) {
+				results = observations
+				nextCursor = nil
+				return
+			}
+
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			results = try container.decode([Observation].self, forKey: .results)
+
+			let nextURLString = try container.decodeIfPresent(String.self, forKey: .next)
+			nextCursor = Self.cursorValue(from: nextURLString)
+		}
+
+		private static func cursorValue(from nextURLString: String?) -> String? {
+			guard let nextURLString,
+				  let components = URLComponents(string: nextURLString) else {
+				return nil
+			}
+
+			return components.queryItems?.first(where: { $0.name == "cursor" })?.value
+		}
+	}
 
 	private struct CreateObservationRequest: Encodable {
 		let ground_station: Int
@@ -213,11 +336,23 @@ final class SatNOGSNetworkService {
 		let end: String
 	}
 
+	private struct UpdateObservationVettedStatusRequest: Encodable {
+		let vetted_status: String
+	}
+
 	// MARK: - Formatters
 
 	private static let predictionDateFormatter: DateFormatter = {
 		let formatter = DateFormatter()
 		formatter.dateFormat = "yyyy-MM-dd HH:mm"
+		formatter.timeZone = TimeZone(secondsFromGMT: 0)
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		return formatter
+	}()
+
+	private static let cursorDateFormatter: DateFormatter = {
+		let formatter = DateFormatter()
+		formatter.dateFormat = "yyyy-MM-dd HH:mm:ssXXXXX"
 		formatter.timeZone = TimeZone(secondsFromGMT: 0)
 		formatter.locale = Locale(identifier: "en_US_POSIX")
 		return formatter

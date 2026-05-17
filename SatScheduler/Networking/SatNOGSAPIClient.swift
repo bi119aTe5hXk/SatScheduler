@@ -83,6 +83,29 @@ final class SatNOGSAPIClient {
 		return try await perform(request)
 	}
 
+	// MARK: - PATCH JSON
+
+	func patchJSON<RequestBody: Encodable, ResponseBody: Decodable>(
+		host: APIHost,
+		path: String,
+		body: RequestBody,
+		requiresToken: Bool = false
+	) async throws -> ResponseBody {
+
+		let url = host.baseURL.appendingPathComponent(path)
+
+		var request = URLRequest(url: url)
+		request.httpMethod = "PATCH"
+		request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+		request.httpBody = try encoder.encode(body)
+
+		if requiresToken {
+			applyToken(to: &request)
+		}
+
+		return try await perform(request)
+	}
+
 	// MARK: - POST Form
 
 	func postForm<T: Decodable>(
@@ -118,9 +141,11 @@ final class SatNOGSAPIClient {
 
 	private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
 		print(request.url)
+		print(request.allHTTPHeaderFields)
 		if let body = request.httpBody {
 			print(String(data: body, encoding: .utf8))
 		}
+		
 		
 		let (data, response) = try await URLSession.shared.data(for: request)
 

@@ -5,6 +5,7 @@
 //  Created by bi119aTe5hXk on 2026/05/16.
 //
 import SwiftUI
+import Combine
 
 struct PredictionTimelineView: View {
 	let start: Date
@@ -13,8 +14,11 @@ struct PredictionTimelineView: View {
 
 	private let rowHeight: CGFloat = 34
 	private let labelWidth: CGFloat = 180
+	private let currentTimeLineWidth: CGFloat = 2
+	private let currentTimeTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 	
 	@AppStorage("SatScheduler.timeDisplayMode") private var timeDisplayMode = TimeDisplayMode.utc.rawValue
+	@State private var currentDate = Date()
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 10) {
@@ -36,6 +40,15 @@ struct PredictionTimelineView: View {
 									.fill(.secondary.opacity(0.12))
 									.frame(height: rowHeight)
 
+								if isCurrentTimeVisible {
+									Rectangle()
+										.fill(.green)
+										.frame(width: currentTimeLineWidth, height: rowHeight + 6)
+										.offset(x: currentTimeXOffset(width: timelineWidth))
+										.help(currentTimeTooltip)
+										.zIndex(10)
+								}
+
 								ForEach(stationTimeline.passes) { pass in
 									let x = xOffset(for: pass.start, width: timelineWidth)
 									let width = barWidth(for: pass, timelineWidth: timelineWidth)
@@ -54,6 +67,9 @@ struct PredictionTimelineView: View {
 			}
 			.frame(height: CGFloat(stationTimelines.count) * (rowHeight + 10))
 		}
+		.onReceive(currentTimeTimer) { date in
+			currentDate = date
+		}
 	}
 
 	private var timelineHeader: some View {
@@ -71,6 +87,18 @@ struct PredictionTimelineView: View {
 			.font(.caption)
 			.foregroundStyle(.secondary)
 		}
+	}
+
+	private var isCurrentTimeVisible: Bool {
+		currentDate >= start && currentDate <= end
+	}
+
+	private var currentTimeTooltip: String {
+		"Current time: \(formatDateTime(currentDate)) \(selectedTimeDisplayMode.label)"
+	}
+
+	private func currentTimeXOffset(width: CGFloat) -> CGFloat {
+		xOffset(for: currentDate, width: width) - currentTimeLineWidth / 2
 	}
 
 	private func xOffset(for date: Date, width: CGFloat) -> CGFloat {

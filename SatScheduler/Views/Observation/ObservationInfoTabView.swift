@@ -8,6 +8,9 @@ import SwiftUI
 
 struct ObservationInfoTabView: View {
 	let observation: Observation
+	@State private var selectedVettedStatus: ObservationVettedStatus = .unknown
+	@State private var isUpdatingVettedStatus = false
+	@State private var vettedStatusMessage: String?
 #if os(iOS)
 	@Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
@@ -33,6 +36,14 @@ struct ObservationInfoTabView: View {
 				}
 			}
 		}
+		.onAppear {
+			selectedVettedStatus = ObservationVettedStatus(rawValue: observation.vetted_status ?? "unknown") ?? .unknown
+		}
+	}
+
+	@ViewBuilder
+	private var vettedStatusEditor: some View {
+		infoRow("Vetted Status", currentObservationVettedStatusDisplayName)
 	}
 
 	private var infoColumn: some View {
@@ -40,6 +51,7 @@ struct ObservationInfoTabView: View {
 			infoCard("Observation") {
 				infoRow("ID", String(observation.id))
 				infoRow("Status", observation.statusDisplayText)
+				vettedStatusEditor
 				infoRow("Start", formatObservationDate(observation.start))
 				infoRow("End", formatObservationDate(observation.end))
 
@@ -157,5 +169,37 @@ struct ObservationInfoTabView: View {
 			return "-"
 		}
 		return string
+	}
+
+	private var currentObservationVettedStatusRawValue: String {
+		observation.vetted_status ?? "unknown"
+	}
+
+	private var currentObservationVettedStatusDisplayName: String {
+		ObservationVettedStatus(rawValue: currentObservationVettedStatusRawValue)?.displayName
+			?? currentObservationVettedStatusRawValue
+	}
+
+	@MainActor
+	private func updateVettedStatus() async {
+		guard !isUpdatingVettedStatus else {
+			return
+		}
+
+		isUpdatingVettedStatus = true
+		defer {
+			isUpdatingVettedStatus = false
+		}
+
+		do {
+			let networkService = SatNOGSNetworkService()
+			_ = try await networkService.updateObservationVettedStatus(
+				observationID: observation.id,
+				status: selectedVettedStatus
+			)
+			vettedStatusMessage = "Updated to \(selectedVettedStatus.displayName)."
+		} catch {
+			vettedStatusMessage = "Update failed: \(error.localizedDescription)"
+		}
 	}
 }

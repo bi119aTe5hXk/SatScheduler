@@ -5,6 +5,7 @@
 //  Created by bi119aTe5hXk on 2026/05/16.
 //
 import SwiftUI
+import Combine
 
 struct StationScheduleTimelineView: View {
 	let start: Date
@@ -14,9 +15,14 @@ struct StationScheduleTimelineView: View {
 	let onRefreshStation: (Int) async -> Void
 
 	@State private var selectedStationSchedule: StationScheduleTimeline?
+	@State private var currentDate: Date
+	@State private var timelineStartDate: Date
 
 	private let labelWidth: CGFloat = 220
 	private let rowHeight: CGFloat = 34
+	private let currentTimeLineWidth: CGFloat = 2
+	private let currentTimeTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+	private let timelineDuration: TimeInterval = 3 * 24 * 60 * 60
 
 	init(
 		start: Date,
@@ -30,6 +36,10 @@ struct StationScheduleTimelineView: View {
 		self.stationSchedules = stationSchedules
 		self.refreshingStationID = refreshingStationID
 		self.onRefreshStation = onRefreshStation
+
+		let now = Date()
+		_currentDate = State(initialValue: now)
+		_timelineStartDate = State(initialValue: now)
 	}
 
 	var body: some View {
@@ -78,7 +88,16 @@ struct StationScheduleTimelineView: View {
 										.fill(.secondary.opacity(0.12))
 										.frame(height: rowHeight)
 
-									ForEach(stationSchedule.observations) { observation in
+									if isCurrentTimeVisible {
+										Rectangle()
+											.fill(.green)
+											.frame(width: currentTimeLineWidth, height: rowHeight + 6)
+											.offset(x: currentTimeXOffset(width: timelineWidth))
+											.help(currentTimeTooltip)
+											.zIndex(10)
+									}
+
+									ForEach(visibleObservations(for: stationSchedule)) { observation in
 										RoundedRectangle(cornerRadius: 5)
 											.fill(.blue.opacity(0.75))
 											.frame(width: max(barWidth(for: observation, timelineWidth: timelineWidth), 3), height: 22)
@@ -104,6 +123,15 @@ struct StationScheduleTimelineView: View {
 			}
 			.stationScheduleSheetSizing()
 		}
+		.onAppear {
+			currentDate = Date()
+		}
+		.onReceive(currentTimeTimer) { date in
+			currentDate = date
+			if date > timelineEndDate {
+				timelineStartDate = date
+			}
+		}
 	}
 
 	private var timelineHeader: some View {
@@ -114,36 +142,58 @@ struct StationScheduleTimelineView: View {
 				.frame(width: labelWidth - 12, alignment: .leading)
 
 			HStack {
-				Text(formatDateTime(start))
+				Text(formatDateTime(timelineStartDate))
 				Spacer()
-				Text(formatDateTime(end))
+				Text(formatDateTime(timelineEndDate))
 			}
 			.font(.caption)
 			.foregroundStyle(.secondary)
 		}
 	}
 
+	private var timelineEndDate: Date {
+		timelineStartDate.addingTimeInterval(timelineDuration)
+	}
+
+	private var isCurrentTimeVisible: Bool {
+		currentDate >= timelineStartDate && currentDate <= timelineEndDate
+	}
+
+	private var currentTimeTooltip: String {
+		"Current time: \(formatDateTime(currentDate)) UTC"
+	}
+
+	private func currentTimeXOffset(width: CGFloat) -> CGFloat {
+		xOffset(for: currentDate, width: width) - currentTimeLineWidth / 2
+	}
+
 	private func xOffset(for date: Date, width: CGFloat) -> CGFloat {
-		let total = end.timeIntervalSince(start)
+		let total = timelineEndDate.timeIntervalSince(timelineStartDate)
 		guard total > 0 else {
 			return 0
 		}
 
-		let offset = date.timeIntervalSince(start)
+		let offset = date.timeIntervalSince(timelineStartDate)
 		return max(0, min(width, CGFloat(offset / total) * width))
 	}
 
 	private func barWidth(for observation: StationScheduleObservation, timelineWidth: CGFloat) -> CGFloat {
-		let total = end.timeIntervalSince(start)
+		let total = timelineEndDate.timeIntervalSince(timelineStartDate)
 		guard total > 0 else {
 			return 0
 		}
 
-		let clippedStart = observation.start > start ? observation.start : start
-		let clippedEnd = observation.end < end ? observation.end : end
+		let clippedStart = observation.start > timelineStartDate ? observation.start : timelineStartDate
+		let clippedEnd = observation.end < timelineEndDate ? observation.end : timelineEndDate
 		let duration = max(0, clippedEnd.timeIntervalSince(clippedStart))
 		return CGFloat(duration / total) * timelineWidth
 	}
+	private func visibleObservations(for stationSchedule: StationScheduleTimeline) -> [StationScheduleObservation] {
+		stationSchedule.observations.filter { observation in
+			observation.start < timelineEndDate && observation.end > timelineStartDate
+		}
+	}
+
 
 	private func tooltip(for observation: StationScheduleObservation) -> String {
 		"""
@@ -160,6 +210,7 @@ struct StationScheduleTimelineView: View {
 		formatter.dateFormat = "MM-dd HH:mm"
 		return formatter.string(from: date)
 	}
+	
 
 }
 

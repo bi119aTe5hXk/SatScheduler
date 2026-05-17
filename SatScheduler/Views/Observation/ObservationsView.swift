@@ -16,7 +16,7 @@ struct ObservationsView: View {
 	var body: some View {
 		NavigationStack {
 			contentView
-				.navigationTitle("Observations")
+				.navigationTitle(observationsTitle)
 				.toolbar {
 					ToolbarItem(placement: .primaryAction) {
 						Button {
@@ -139,6 +139,14 @@ struct ObservationsView: View {
 		}
 
 		await viewModel.loadUnknownObservations(observerID: observerID)
+	}
+	
+	private var observationsTitle: String {
+		if viewModel.isLoading {
+			return "Observations"
+		}
+
+		return "Observations (\(viewModel.observations.count))"
 	}
 }
 
