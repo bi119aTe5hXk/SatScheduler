@@ -23,7 +23,7 @@ struct StationScheduleListView: View {
 									Text(satelliteDisplayName(for: observation))
 										.font(.subheadline)
 
-									Text("\(formatDateTime(observation.start)) - \(formatTime(observation.end)) UTC")
+									Text("\(formatDateTime(observation.start)) - \(formatTime(observation.end)) UTC \(readableDurationText(from: observation.start, to: observation.end))")
 										.font(.caption)
 										.foregroundStyle(.secondary)
 
@@ -36,9 +36,9 @@ struct StationScheduleListView: View {
 
 								Spacer()
 
-								Text(observation.durationText)
+								Text(relativeTimeFromNowText(for: observation.start))
 									.font(.caption)
-									.foregroundStyle(.secondary)
+									.foregroundStyle(relativeTimeFromNowColor(for: observation.start))
 							}
 							.padding(10)
 							.background(.secondary.opacity(0.08))
@@ -87,5 +87,49 @@ struct StationScheduleListView: View {
 		formatter.timeZone = TimeZone(secondsFromGMT: 0)
 		formatter.dateFormat = "yyyy-MM-dd HH:mm"
 		return formatter.string(from: date)
+	}
+	
+	private func readableDurationText(from start: Date, to end: Date) -> String {
+		let seconds = max(0, end.timeIntervalSince(start))
+		let minutes = Int((seconds / 60).rounded())
+
+		if minutes < 60 {
+			return "\(max(1, minutes))min"
+		}
+
+		let hours = minutes / 60
+		let remainingMinutes = minutes % 60
+
+		if remainingMinutes == 0 {
+			return "\(hours)hr"
+		}
+
+		return "\(hours)hr \(remainingMinutes)min"
+	}
+
+	private func relativeTimeFromNowText(for date: Date, now: Date = Date()) -> String {
+		let seconds = date.timeIntervalSince(now)
+		let absoluteSeconds = abs(seconds)
+
+		if absoluteSeconds < 60 {
+			return seconds >= 0 ? "now" : "started"
+		}
+
+		let minutes = Int((absoluteSeconds / 60).rounded())
+		let value: String
+
+		if minutes < 60 {
+			value = "\(minutes)min"
+		} else {
+			let hours = minutes / 60
+			let remainingMinutes = minutes % 60
+			value = remainingMinutes == 0 ? "\(hours)hr" : "\(hours)hr \(remainingMinutes)min"
+		}
+
+		return seconds >= 0 ? "\(value) from now" : "\(value) ago"
+	}
+
+	private func relativeTimeFromNowColor(for date: Date, now: Date = Date()) -> Color {
+		date >= now ? .secondary : .orange
 	}
 }
