@@ -274,12 +274,22 @@ struct AutoScheduleBatchResult {
 
 	var successResults: [AutoScheduleTargetResult] {
 		results.filter { result in
-			if case .success = result.status {
-				return true
+			if case .success(let createdCount) = result.status {
+				return createdCount > 0
 			}
-
 			return false
 		}
+
+	}
+
+	var skippedResults: [AutoScheduleTargetResult] {
+		results.filter { result in
+			if case .success(let createdCount) = result.status {
+				return createdCount == 0
+			}
+			return false
+		}
+
 	}
 
 	var failureResults: [AutoScheduleTargetResult] {
@@ -313,6 +323,9 @@ enum AutoScheduleTargetStatus: Equatable {
 	var displayMessage: String {
 		switch self {
 		case .success(let createdCount):
+			if createdCount == 0 {
+				return "Skipped: no available observation windows."
+			}
 			return "Scheduled \(createdCount) observation(s)."
 		case .failure(let message):
 			return message

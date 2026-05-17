@@ -185,6 +185,7 @@ struct WatchListView: View {
 					if let autoScheduleResult {
 						Text("Created \(autoScheduleResult.createdCount) observation(s).")
 						Text("Succeeded targets: \(autoScheduleResult.successResults.count)")
+						Text("Skipped targets: \(autoScheduleResult.skippedResults.count)")
 						Text("Failed targets: \(autoScheduleResult.failureResults.count)")
 					} else {
 						Text("Completed targets: \(autoScheduleProgress.count)")
@@ -272,6 +273,7 @@ struct WatchListView: View {
 		var lines: [String] = [
 			"Created \(result.createdCount) observation(s).",
 			"Succeeded targets: \(result.successResults.count)",
+			"Skipped targets: \(result.skippedResults.count)",
 			"Failed targets: \(result.failureResults.count)"
 		]
 
