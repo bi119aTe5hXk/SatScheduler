@@ -29,15 +29,16 @@ struct WatchTargetPredictionPreviewView: View {
 				}
 
 				GroupBox("Prediction Timeline") {
-					contentView
+					VStack(alignment: .leading, spacing: 12) {
+						predictionFilterSummaryView
+						contentView
+					}
 				}
 
 				Spacer()
 
 			}
 			.padding(24)
-//			.frame(minWidth: 760, minHeight: 560)
-//			.navigationTitle("Prediction")
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) {
 					Button {
@@ -50,7 +51,7 @@ struct WatchTargetPredictionPreviewView: View {
 								.controlSize(.small)
 							Text("Scheduling...")
 						} else {
-							HStack{
+							HStack {
 								Image(systemName: "calendar.badge.plus")
 								Text("Schedule Predicted Windows")
 							}
@@ -91,6 +92,24 @@ struct WatchTargetPredictionPreviewView: View {
 	}
 
 	@ViewBuilder
+	private var predictionFilterSummaryView: some View {
+		if let conflictSummary = viewModel.conflictSummary {
+			HStack(spacing: 8) {
+				Image(systemName: conflictSummary.hiddenCount > 0 ? "exclamationmark.triangle" : "checkmark.circle")
+					.foregroundStyle(conflictSummary.hiddenCount > 0 ? .orange : .green)
+
+				Text("Predicted \(conflictSummary.predictedCount), visible \(conflictSummary.visibleCount), hidden \(conflictSummary.hiddenCount).")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+			.padding(.vertical, 6)
+			.padding(.horizontal, 10)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+		}
+	}
+
+	@ViewBuilder
 	private var contentView: some View {
 		if viewModel.isLoading {
 			HStack {
@@ -127,7 +146,6 @@ struct WatchTargetPredictionPreviewView: View {
 						}
 					}
 				}
-//				.frame(maxHeight: 220)
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 		}
@@ -178,37 +196,8 @@ struct WatchTargetPredictionPreviewView: View {
 
 		do {
 			let networkService = SatNOGSNetworkService()
-			let stationIDs = Array(Set(requests.map(\.groundStationID))).sorted()
-			let requestStart = requests.map(\.start).min() ?? viewModel.startDate
-			let requestEnd = requests.map(\.end).max() ?? viewModel.endDate
-
-			let existingObservations = try await networkService.fetchScheduledObservations(
-				start: requestStart,
-				end: requestEnd,
-				groundStationIDs: stationIDs
-			)
-
-			print("Fetched \(existingObservations.count) future observation(s) for stations: \(stationIDs). Request range for local conflict check: \(requestStart) - \(requestEnd)")
-
-			let conflictResult = ObservationScheduleConflictResolver.filterConflicts(
-				requests: requests,
-				existingObservations: existingObservations,
-				conflictBuffer: 30
-			)
-
-			guard !conflictResult.allowedRequests.isEmpty else {
-				scheduleMessage = "No observations were scheduled. All \(conflictResult.skippedRequests.count) prediction window(s) overlap with existing schedules."
-				return
-			}
-
-			let observations = try await networkService.createObservations(conflictResult.allowedRequests)
-			let skippedCount = conflictResult.skippedRequests.count
-
-			if skippedCount > 0 {
-				scheduleMessage = "Scheduled \(observations.count) observation(s). Skipped \(skippedCount) overlapping window(s)."
-			} else {
-				scheduleMessage = "Scheduled \(observations.count) observation(s)."
-			}
+			let observations = try await networkService.createObservations(requests)
+			scheduleMessage = "Scheduled \(observations.count) observation(s)."
 		} catch {
 			scheduleMessage = "Schedule failed: \(error.localizedDescription)"
 		}

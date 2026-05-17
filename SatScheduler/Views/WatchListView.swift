@@ -9,6 +9,11 @@ import SwiftUI
 struct WatchListView: View {
 	@StateObject private var viewModel = WatchListViewModel()
 	@EnvironmentObject private var authManager: AuthManager
+#if os(iOS)
+@Environment(\.editMode) private var editMode
+#else
+@State private var isEditingWatchTargets = false
+#endif
 	@State private var isShowingAddTargetSheet = false
 	@State private var isAutoScheduling = false
 	@State private var autoScheduleMessage: String?
@@ -26,13 +31,47 @@ struct WatchListView: View {
 				} else {
 					List {
 						ForEach(viewModel.watchTargets) { target in
+						#if os(macOS)
+							HStack(spacing: 8) {
+								WatchTargetRow(target: target)
+									.contentShape(Rectangle())
+									.onTapGesture(count: 1) {
+										guard !isEditingWatchTargets else {
+											return
+										}
+										predictionPreviewTarget = target
+									}
+
+								if isEditingWatchTargets {
+									VStack(spacing: 4) {
+										Button {
+											viewModel.moveTargetUp(target)
+										} label: {
+											Image(systemName: "chevron.up")
+										}
+										.buttonStyle(.borderless)
+										.disabled(viewModel.isFirstTarget(target))
+
+										Button {
+											viewModel.moveTargetDown(target)
+										} label: {
+											Image(systemName: "chevron.down")
+										}
+										.buttonStyle(.borderless)
+										.disabled(viewModel.isLastTarget(target))
+									}
+								}
+							}
+						#else
 							WatchTargetRow(target: target)
 								.contentShape(Rectangle())
 								.onTapGesture(count: 1) {
 									predictionPreviewTarget = target
 								}
+						#endif
 						}
 						.onDelete(perform: viewModel.deleteTargets)
+						.onMove(perform: viewModel.moveTargets)
 					}
 					.refreshable {
 						viewModel.loadWatchTargets()
@@ -41,6 +80,22 @@ struct WatchListView: View {
 			}
 			.navigationTitle("Watch List")
 			.toolbar {
+				ToolbarItem(placement: .cancellationAction) {
+
+#if os(iOS)
+
+					EditButton()
+						.disabled(viewModel.watchTargets.isEmpty)
+
+#else
+
+					Button(isEditingWatchTargets ? "Done" : "Edit") {
+						toggleWatchTargetEditing()
+					}
+					.disabled(viewModel.watchTargets.isEmpty)
+
+#endif
+				}
 				ToolbarItemGroup(placement: .primaryAction) {
 					Button {
 						Task {
@@ -86,6 +141,22 @@ struct WatchListView: View {
 			}
 		}
 	}
+
+#if os(iOS)
+private var isEditingWatchTargets: Bool {
+	editMode?.wrappedValue.isEditing == true
+}
+#endif
+
+private func toggleWatchTargetEditing() {
+	withAnimation {
+#if os(iOS)
+		editMode?.wrappedValue = isEditingWatchTargets ? .inactive : .active
+#else
+		isEditingWatchTargets.toggle()
+#endif
+	}
+}
 
 	private func runAutoSchedule() async {
 		guard authManager.isLoggedIn else {

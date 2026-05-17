@@ -12,7 +12,8 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 	@Published var isLoading = false
 	@Published var errorMessage: String?
 	@Published var stationTimelines: [StationPassTimeline] = []
-
+	@Published var conflictSummary: PredictionConflictSummary?
+	
 	let startDate = Date()
 	let endDate: Date = Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date().addingTimeInterval(2 * 24 * 60 * 60)
 
@@ -23,6 +24,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 		isLoading = true
 		errorMessage = nil
 		stationTimelines = []
+		conflictSummary = nil
 
 		defer {
 			isLoading = false
@@ -68,6 +70,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 
 			guard !predictedTimelines.isEmpty else {
 				stationTimelines = []
+				conflictSummary = nil
 				errorMessage = nil
 				return
 			}
@@ -96,7 +99,13 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			let conflictResult = ObservationScheduleConflictResolver.filterConflicts(
 				requests: requests,
 				existingObservations: existingObservations,
-				conflictBuffer: 30
+				conflictBuffer: 5 * 60
+			)
+
+			conflictSummary = PredictionConflictSummary(
+				predictedCount: requests.count,
+				visibleCount: conflictResult.allowedRequests.count,
+				hiddenCount: conflictResult.skippedRequests.count
 			)
 
 			let allowedPassKeys = Set(conflictResult.allowedRequests.map(Self.passKey))
@@ -149,6 +158,12 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			endTime: end.timeIntervalSince1970
 		)
 	}
+}
+
+struct PredictionConflictSummary: Equatable {
+	let predictedCount: Int
+	let visibleCount: Int
+	let hiddenCount: Int
 }
 
 private struct PassScheduleKey: Hashable {

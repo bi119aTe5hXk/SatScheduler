@@ -6,9 +6,8 @@
 //
 
 import Foundation
-import Combine
 import SwiftUI
-
+import Combine
 @MainActor
 final class WatchListViewModel: ObservableObject {
 
@@ -42,6 +41,38 @@ final class WatchListViewModel: ObservableObject {
 	func deleteTargets(at offsets: IndexSet) {
 		watchTargets.remove(atOffsets: offsets)
 		saveWatchTargets()
+	}
+
+	func moveTargets(from source: IndexSet, to destination: Int) {
+		watchTargets.move(fromOffsets: source, toOffset: destination)
+		saveWatchTargets()
+	}
+	func moveTargetUp(_ target: WatchTarget) {
+		guard let index = watchTargets.firstIndex(where: { $0.id == target.id }),
+			  index > 0 else {
+			return
+		}
+
+		watchTargets.move(fromOffsets: IndexSet(integer: index), toOffset: index - 1)
+		saveWatchTargets()
+	}
+
+	func moveTargetDown(_ target: WatchTarget) {
+		guard let index = watchTargets.firstIndex(where: { $0.id == target.id }),
+			  index < watchTargets.count - 1 else {
+			return
+		}
+
+		watchTargets.move(fromOffsets: IndexSet(integer: index), toOffset: index + 2)
+		saveWatchTargets()
+	}
+
+	func isFirstTarget(_ target: WatchTarget) -> Bool {
+		watchTargets.first?.id == target.id
+	}
+
+	func isLastTarget(_ target: WatchTarget) -> Bool {
+		watchTargets.last?.id == target.id
 	}
 
 	private func saveWatchTargets() {
