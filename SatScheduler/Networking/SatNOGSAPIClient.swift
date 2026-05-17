@@ -141,10 +141,10 @@ final class SatNOGSAPIClient {
 
 	private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
 		print(request.url)
-		print(request.allHTTPHeaderFields)
-		if let body = request.httpBody {
-			print(String(data: body, encoding: .utf8))
-		}
+//		print(request.allHTTPHeaderFields)
+//		if let body = request.httpBody {
+//			print(String(data: body, encoding: .utf8))
+//		}
 		
 		
 		let (data, response) = try await URLSession.shared.data(for: request)

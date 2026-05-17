@@ -74,7 +74,11 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 				errorMessage = nil
 				return
 			}
-
+			
+			
+			print("Target satelliteID:", target.satelliteID)
+			print("TransmitterID:", target.transmitterID)
+			
 			let requests = predictedTimelines.flatMap { stationTimeline in
 				stationTimeline.passes.map { passWindow in
 					ObservationScheduleRequest(

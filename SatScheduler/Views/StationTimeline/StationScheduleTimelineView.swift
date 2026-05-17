@@ -22,7 +22,7 @@ struct StationScheduleTimelineView: View {
 	private let rowHeight: CGFloat = 34
 	private let currentTimeLineWidth: CGFloat = 2
 	private let currentTimeTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-	private let timelineDuration: TimeInterval = 3 * 24 * 60 * 60
+	private let timelineDuration: TimeInterval = 2 * 24 * 60 * 60
 
 	init(
 		start: Date,

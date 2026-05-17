@@ -23,11 +23,108 @@ final class AutoScheduler {
 		self.dbService = dbService
 		self.passPredictor = passPredictor
 	}
+	
+	func scheduleTargets(
+		_ targets: [WatchTarget],
+		from start: Date,
+		to end: Date,
+		delayBetweenTargets: TimeInterval = 1,
+		shouldCancel: (@MainActor () -> Bool)? = nil,
+		onProgress: (@MainActor (AutoScheduleTargetResult) -> Void)? = nil
+	) async -> AutoScheduleBatchResult {
+		var targetResults: [AutoScheduleTargetResult] = []
+		var allCreatedObservations: [Observation] = []
+		var cachedExistingObservations: [Observation] = []
+
+		do {
+			let stationIDs = Array(Set(targets.flatMap { target in
+				target.stationIDs
+			})).sorted()
+
+			if !stationIDs.isEmpty {
+				cachedExistingObservations = try await networkService.fetchScheduledObservations(
+					start: start,
+					end: end,
+					groundStationIDs: stationIDs
+				)
+			}
+		} catch {
+			print("Auto schedule warning: failed to preload station schedules: \(error.localizedDescription)")
+		}
+
+		for (index, target) in targets.enumerated() {
+			if await shouldCancel?() == true {
+				break
+			}
+
+			let targetResult: AutoScheduleTargetResult
+
+			do {
+				let observations = try await schedule(
+					target: target,
+					from: start,
+					to: end,
+					existingObservations: cachedExistingObservations
+				)
+
+				allCreatedObservations.append(contentsOf: observations)
+				cachedExistingObservations.append(contentsOf: observations)
+				targetResult = AutoScheduleTargetResult(
+					target: target,
+					status: .success(createdCount: observations.count)
+				)
+			} catch {
+				targetResult = AutoScheduleTargetResult(
+					target: target,
+					status: .failure(message: error.localizedDescription)
+				)
+
+				print("Auto schedule failed for target \(target.satelliteID): \(error.localizedDescription)")
+			}
+
+			targetResults.append(targetResult)
+			await onProgress?(targetResult)
+
+			if index < targets.count - 1, delayBetweenTargets > 0 {
+				let delayStep: TimeInterval = 0.25
+				var delayed: TimeInterval = 0
+
+				while delayed < delayBetweenTargets {
+					if await shouldCancel?() == true {
+						break
+					}
+
+					let nextStep = min(delayStep, delayBetweenTargets - delayed)
+					try? await Task.sleep(nanoseconds: UInt64(nextStep * 1_000_000_000))
+					delayed += nextStep
+				}
+			}
+		}
+
+		return AutoScheduleBatchResult(
+			results: targetResults,
+			createdObservations: allCreatedObservations
+		)
+	}
 
 	func schedule(
 		target: WatchTarget,
 		from start: Date,
 		to end: Date
+	) async throws -> [Observation] {
+		try await schedule(
+			target: target,
+			from: start,
+			to: end,
+			existingObservations: nil
+		)
+	}
+
+	private func schedule(
+		target: WatchTarget,
+		from start: Date,
+		to end: Date,
+		existingObservations preloadedExistingObservations: [Observation]?
 	) async throws -> [Observation] {
 		guard let tle = try await dbService.fetchLatestTLE(satelliteID: target.satelliteID) else {
 			throw AutoSchedulerError.tleNotFound(target.satelliteID)
@@ -58,11 +155,16 @@ final class AutoScheduler {
 			request.end
 		}.max() ?? end
 
-		let existingObservations = try await networkService.fetchScheduledObservations(
-			start: requestStart,
-			end: requestEnd,
-			groundStationIDs: stationIDs
-		)
+		let existingObservations: [Observation]
+		if let preloadedExistingObservations {
+			existingObservations = preloadedExistingObservations
+		} else {
+			existingObservations = try await networkService.fetchScheduledObservations(
+				start: requestStart,
+				end: requestEnd,
+				groundStationIDs: stationIDs
+			)
+		}
 
 		let conflictResult = ObservationScheduleConflictResolver.filterConflicts(
 			requests: requests,
@@ -162,6 +264,58 @@ enum AutoSchedulerError: LocalizedError {
 			return "TLE not found for satellite \(satelliteID)."
 		case .stationSnapshotNotFound:
 			return "Station snapshot not found. Please refresh the watch target stations."
+		}
+	}
+}
+
+struct AutoScheduleBatchResult {
+	let results: [AutoScheduleTargetResult]
+	let createdObservations: [Observation]
+
+	var successResults: [AutoScheduleTargetResult] {
+		results.filter { result in
+			if case .success = result.status {
+				return true
+			}
+
+			return false
+		}
+	}
+
+	var failureResults: [AutoScheduleTargetResult] {
+		results.filter { result in
+			if case .failure = result.status {
+				return true
+			}
+
+			return false
+		}
+	}
+
+	var createdCount: Int {
+		createdObservations.count
+	}
+}
+
+struct AutoScheduleTargetResult: Identifiable {
+	let target: WatchTarget
+	let status: AutoScheduleTargetStatus
+
+	var id: WatchTarget.ID {
+		target.id
+	}
+}
+
+enum AutoScheduleTargetStatus: Equatable {
+	case success(createdCount: Int)
+	case failure(message: String)
+
+	var displayMessage: String {
+		switch self {
+		case .success(let createdCount):
+			return "Scheduled \(createdCount) observation(s)."
+		case .failure(let message):
+			return message
 		}
 	}
 }

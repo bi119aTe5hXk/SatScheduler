@@ -93,6 +93,8 @@ enum ObservationScheduleConflictResolver {
 				)
 			} else {
 				allowed.append(request)
+				
+				print("Add request station=\(request.groundStationID), start=\(requestStart), end=\(requestEnd)")
 
 				intervalsByStation[request.groundStationID, default: []].append(
 					ExistingObservationInterval(
