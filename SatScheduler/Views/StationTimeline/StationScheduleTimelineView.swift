@@ -82,6 +82,14 @@ struct StationScheduleTimelineView: View {
 									.font(.caption2)
 								}
 								.frame(maxWidth: .infinity, alignment: .leading)
+								
+								HStack {
+									Text(formatDateTime(timelineStartDate))
+									Spacer()
+									Text(formatDateTime(timelineEndDate))
+								}
+								.font(.caption)
+								.foregroundStyle(.secondary)
 
 								ZStack(alignment: .leading) {
 									RoundedRectangle(cornerRadius: 6)
@@ -141,14 +149,6 @@ struct StationScheduleTimelineView: View {
 			Text("Station")
 				.font(.caption)
 				.foregroundStyle(.secondary)
-
-			HStack {
-				Text(formatDateTime(timelineStartDate))
-				Spacer()
-				Text(formatDateTime(timelineEndDate))
-			}
-			.font(.caption)
-			.foregroundStyle(.secondary)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
