@@ -13,6 +13,9 @@ struct AddWatchTargetView: View {
 	let onSave: (WatchTarget) -> Void
 
 	@StateObject var viewModel = AddWatchTargetViewModel()
+	@State private var requireStationDaylight = false
+	@State private var minPeakElevationText = ""
+	@State private var maxPeakElevationText = ""
 
 	var body: some View {
 		NavigationStack {
@@ -179,6 +182,46 @@ struct AddWatchTargetView: View {
 					}
 				}
 
+				Section("Scheduling Options") {
+					Toggle("Require station daylight", isOn: $requireStationDaylight)
+
+					Text("Only schedule observations when the selected ground station is in daylight. Use this for satellites that transmit only when solar powered.")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+
+					VStack(alignment: .leading, spacing: 8) {
+						Text("Peak elevation range")
+							.font(.subheadline)
+
+						HStack {
+							TextField("Min °", text: $minPeakElevationText)
+								.textFieldStyle(.roundedBorder)
+#if os(iOS)
+								.keyboardType(.decimalPad)
+#endif
+
+							Text("–")
+								.foregroundStyle(.secondary)
+
+							TextField("Max °", text: $maxPeakElevationText)
+								.textFieldStyle(.roundedBorder)
+#if os(iOS)
+								.keyboardType(.decimalPad)
+#endif
+						}
+
+						Text("Optional. If set, passes whose peak elevation is outside this range will be ignored. Leave blank to disable the limit.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+
+						if let peakElevationValidationMessage {
+							Text(peakElevationValidationMessage)
+								.font(.caption)
+								.foregroundStyle(.red)
+						}
+					}
+				}
+
 				if let errorMessage = viewModel.errorMessage {
 					Section {
 						Text(errorMessage)
@@ -196,11 +239,14 @@ struct AddWatchTargetView: View {
 
 				ToolbarItem(placement: .confirmationAction) {
 					Button("Add") {
-						if let target = viewModel.makeWatchTarget() {
+						if var target = viewModel.makeWatchTarget() {
+							target.requireStationDaylight = requireStationDaylight ? true : nil
+							target.minPeakElevation = parsedMinPeakElevation
+							target.maxPeakElevation = parsedMaxPeakElevation
 							onSave(target)
 						}
 					}
-					.disabled(!viewModel.canSave)
+					.disabled(!viewModel.canSave || !isPeakElevationRangeValid)
 				}
 			}
 			.task {
@@ -216,5 +262,51 @@ struct AddWatchTargetView: View {
 		}
 
 		return viewModel.displayName(for: transmitter)
+	}
+
+	private var parsedMinPeakElevation: Double? {
+		parsePeakElevation(minPeakElevationText)
+	}
+
+	private var parsedMaxPeakElevation: Double? {
+		parsePeakElevation(maxPeakElevationText)
+	}
+
+	private var isPeakElevationRangeValid: Bool {
+		peakElevationValidationMessage == nil
+	}
+
+	private var peakElevationValidationMessage: String? {
+		let minText = minPeakElevationText.trimmingCharacters(in: .whitespacesAndNewlines)
+		let maxText = maxPeakElevationText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+		if !minText.isEmpty && parsedMinPeakElevation == nil {
+			return "Minimum peak elevation must be between 0 and 90 degrees."
+		}
+
+		if !maxText.isEmpty && parsedMaxPeakElevation == nil {
+			return "Maximum peak elevation must be between 0 and 90 degrees."
+		}
+
+		if let min = parsedMinPeakElevation,
+		   let max = parsedMaxPeakElevation,
+		   min > max {
+			return "Minimum peak elevation must not be greater than maximum peak elevation."
+		}
+
+		return nil
+	}
+
+	private func parsePeakElevation(_ text: String) -> Double? {
+		let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			return nil
+		}
+
+		guard let value = Double(trimmed), value >= 0, value <= 90 else {
+			return nil
+		}
+
+		return value
 	}
 }

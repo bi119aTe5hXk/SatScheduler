@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
 
 	@EnvironmentObject private var authManager: AuthManager
 	@StateObject private var observerIDStore = ObserverIDStore.shared
+	private let watchTargetStore = WatchTargetStore.shared
 
 	@State private var isShowingTokenEditor = false
 	@State private var successMessage: String?
@@ -19,6 +21,11 @@ struct SettingsView: View {
 	@State private var isShowingObserverIDEditor = false
 	@State private var observerIDDraft = ""
 	@State private var observerIDMessage: String?
+
+	@State private var isShowingWatchListImporter = false
+	@State private var watchListBackupShareItem: WatchListBackupShareItem?
+	@State private var watchListBackupMessage: String?
+	@State private var watchListBackupErrorMessage: String?
 	
 	@AppStorage("SatScheduler.timeDisplayMode") private var timeDisplayMode = TimeDisplayMode.utc.rawValue
 
@@ -119,6 +126,33 @@ struct SettingsView: View {
 						.foregroundStyle(.secondary)
 
 				}
+				Section("Watch List Backup") {
+					Button {
+						exportWatchList()
+					} label: {
+						Label("Export Watch List", systemImage: "square.and.arrow.up")
+					}
+					Button {
+						isShowingWatchListImporter = true
+					} label: {
+						Label("Import Watch List", systemImage: "square.and.arrow.down")
+					}
+					Text("Export or import your Watch List as a JSON backup file.")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+
+					if let watchListBackupMessage {
+						Text(watchListBackupMessage)
+							.font(.caption)
+							.foregroundStyle(.green)
+					}
+
+					if let watchListBackupErrorMessage {
+						Text(watchListBackupErrorMessage)
+							.font(.caption)
+							.foregroundStyle(.red)
+					}
+				}
 				Section("Cache") {
 					Button(role: .destructive) {
 						isShowingClearTimelineCacheConfirmation = true
@@ -190,7 +224,82 @@ struct SettingsView: View {
 			} message: {
 				Text("Cached station timeline data will be removed from this device only.")
 			}
-			
+			.fileImporter(
+				isPresented: $isShowingWatchListImporter,
+				allowedContentTypes: [.json],
+				allowsMultipleSelection: false
+			) { result in
+				importWatchList(from: result)
+			}
+			.sheet(item: $watchListBackupShareItem) { shareItem in
+				NavigationStack {
+					WatchListShareSheet(url: shareItem.url)
+						.navigationTitle("Export Watch List")
+#if os(iOS)
+						.navigationBarTitleDisplayMode(.inline)
+#endif
+						.toolbar {
+							ToolbarItem(placement: .cancellationAction) {
+								Button("Close") {
+									watchListBackupShareItem = nil
+								}
+							}
+						}
+				}
+				.frame(minWidth: 420, minHeight: 180)
+			}
+		}
+	}
+
+	private var defaultWatchListBackupFilename: String {
+		let formatter = DateFormatter()
+		formatter.calendar = Calendar(identifier: .gregorian)
+		formatter.locale = Locale(identifier: "en_US_POSIX")
+		formatter.dateFormat = "yyyyMMdd-HHmmss"
+		return "SatScheduler-WatchList-\(formatter.string(from: Date())).json"
+	}
+
+	private func exportWatchList() {
+		let backup = WatchListBackup(
+			exportedAt: Date(),
+			targets: watchTargetStore.loadWatchTargets()
+		)
+
+		do {
+			let data = try JSONEncoder.watchListBackupEncoder.encode(backup)
+			let url = FileManager.default.temporaryDirectory
+				.appendingPathComponent(defaultWatchListBackupFilename)
+			try data.write(to: url, options: [.atomic])
+
+			watchListBackupMessage = nil
+			watchListBackupErrorMessage = nil
+			watchListBackupShareItem = WatchListBackupShareItem(url: url)
+		} catch {
+			watchListBackupErrorMessage = "Failed to prepare Watch List backup: \(error.localizedDescription)"
+		}
+	}
+
+	private func importWatchList(from result: Result<[URL], Error>) {
+		do {
+			let urls = try result.get()
+			guard let url = urls.first else {
+				return
+			}
+
+			let didStartAccessing = url.startAccessingSecurityScopedResource()
+			defer {
+				if didStartAccessing {
+					url.stopAccessingSecurityScopedResource()
+				}
+			}
+
+			let data = try Data(contentsOf: url)
+			let backup = try JSONDecoder.watchListBackupDecoder.decode(WatchListBackup.self, from: data)
+			watchTargetStore.replaceTargets(backup.targets)
+			watchListBackupMessage = "Imported \(backup.targets.count) Watch List item(s)."
+			watchListBackupErrorMessage = nil
+		} catch {
+			watchListBackupErrorMessage = "Failed to import Watch List: \(error.localizedDescription)"
 		}
 	}
 }
@@ -260,5 +369,73 @@ private struct APITokenEditorSheet: View {
 		} catch {
 			errorMessage = error.localizedDescription
 		}
+	}
+}
+
+private struct WatchListBackup: Codable {
+	let schemaVersion: Int
+	let exportedAt: Date
+	let targets: [WatchTarget]
+
+	init(
+		schemaVersion: Int = 1,
+		exportedAt: Date,
+		targets: [WatchTarget]
+	) {
+		self.schemaVersion = schemaVersion
+		self.exportedAt = exportedAt
+		self.targets = targets
+	}
+}
+
+private struct WatchListBackupShareItem: Identifiable {
+	let id = UUID()
+	let url: URL
+}
+
+
+#if os(iOS)
+private struct WatchListShareSheet: UIViewControllerRepresentable {
+	let url: URL
+
+	func makeUIViewController(context: Context) -> UIActivityViewController {
+		UIActivityViewController(activityItems: [url], applicationActivities: nil)
+	}
+
+	func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+#elseif os(macOS)
+private struct WatchListShareSheet: NSViewRepresentable {
+	let url: URL
+
+	func makeNSView(context: Context) -> NSView {
+		let view = NSView()
+
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+			let picker = NSSharingServicePicker(items: [url])
+			picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+		}
+
+		return view
+	}
+
+	func updateNSView(_ nsView: NSView, context: Context) {}
+}
+#endif
+
+private extension JSONEncoder {
+	static var watchListBackupEncoder: JSONEncoder {
+		let encoder = JSONEncoder()
+		encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+		encoder.dateEncodingStrategy = .iso8601
+		return encoder
+	}
+}
+
+private extension JSONDecoder {
+	static var watchListBackupDecoder: JSONDecoder {
+		let decoder = JSONDecoder()
+		decoder.dateDecodingStrategy = .iso8601
+		return decoder
 	}
 }

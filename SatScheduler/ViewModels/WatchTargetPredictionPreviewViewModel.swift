@@ -57,11 +57,19 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 					minimumElevation: minimumElevation
 				)
 
+				let filteredPasses = passes.filter { passWindow in
+					shouldIncludePassWindow(
+						passWindow,
+						target: target,
+						station: station
+					)
+				}
+
 				timelines.append(
 					StationPassTimeline(
 						stationID: station.id,
 						stationName: station.name,
-						passes: passes
+						passes: filteredPasses
 					)
 				)
 			}
@@ -143,6 +151,60 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			errorMessage = error.localizedDescription
 		}
 	}
+
+	private func shouldIncludePassWindow(
+		_ passWindow: PassWindow,
+		target: WatchTarget,
+		station: WatchStationSnapshot
+	) -> Bool {
+		if let minPeakElevation = target.minPeakElevation,
+		   passWindow.peakElevation < minPeakElevation {
+			let formattedPeakElevation = String(format: "%.2f", passWindow.peakElevation)
+			let formattedMinPeakElevation = String(format: "%.2f", minPeakElevation)
+			print("Prediction skipped peak-elevation pass: target=\(target.satelliteID), station=\(station.id), peakElevation=\(formattedPeakElevation), minPeakElevation=\(formattedMinPeakElevation)")
+			return false
+		}
+
+		if let maxPeakElevation = target.maxPeakElevation,
+		   passWindow.peakElevation > maxPeakElevation {
+			let formattedPeakElevation = String(format: "%.2f", passWindow.peakElevation)
+			let formattedMaxPeakElevation = String(format: "%.2f", maxPeakElevation)
+			print("Prediction skipped peak-elevation pass: target=\(target.satelliteID), station=\(station.id), peakElevation=\(formattedPeakElevation), maxPeakElevation=\(formattedMaxPeakElevation)")
+			return false
+		}
+
+		guard target.requiresStationDaylight else {
+			return true
+		}
+
+		guard let latitude = station.latitude,
+			  let longitude = station.longitude else {
+			print("Prediction skipped daylight-only pass: station \(station.id) location is missing.")
+			return false
+		}
+
+		let midpoint = passWindow.start.addingTimeInterval(
+			passWindow.end.timeIntervalSince(passWindow.start) / 2
+		)
+		let solarElevation = SolarCalculator.solarElevation(
+			date: midpoint,
+			latitude: latitude,
+			longitude: longitude
+		)
+		let isDaylight = SolarCalculator.isDaylight(
+			date: midpoint,
+			latitude: latitude,
+			longitude: longitude
+		)
+
+		if !isDaylight {
+			let formattedSolarElevation = String(format: "%.2f", solarElevation)
+			print("Prediction skipped daylight-only pass: target=\(target.satelliteID), station=\(station.id), midpoint=\(midpoint), solarElevation=\(formattedSolarElevation)")
+		}
+
+		return isDaylight
+	}
+
 	private static func passKey(_ request: ObservationScheduleRequest) -> PassScheduleKey {
 		passKey(
 			stationID: request.groundStationID,

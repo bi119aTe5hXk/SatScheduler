@@ -205,14 +205,75 @@ final class AutoScheduler {
 			minimumElevation: minimumElevation
 		)
 
-		return passWindows.map { passWindow in
-			ObservationScheduleRequest(
+		return passWindows.compactMap { passWindow in
+			guard shouldIncludePassWindow(
+				passWindow,
+				target: target,
+				station: station
+			) else {
+				return nil
+			}
+
+			return ObservationScheduleRequest(
 				groundStationID: station.id,
 				transmitterUUID: target.transmitterID,
 				start: passWindow.start,
 				end: passWindow.end
 			)
 		}
+	}
+
+	private func shouldIncludePassWindow(
+		_ passWindow: PassWindow,
+		target: WatchTarget,
+		station: WatchStationSnapshot
+	) -> Bool {
+		if let minPeakElevation = target.minPeakElevation,
+		   passWindow.peakElevation < minPeakElevation {
+			let formattedPeakElevation = String(format: "%.2f", passWindow.peakElevation)
+			let formattedMinPeakElevation = String(format: "%.2f", minPeakElevation)
+			print("Auto schedule skipped peak-elevation pass: target=\(target.satelliteID), station=\(station.id), peakElevation=\(formattedPeakElevation), minPeakElevation=\(formattedMinPeakElevation)")
+			return false
+		}
+
+		if let maxPeakElevation = target.maxPeakElevation,
+		   passWindow.peakElevation > maxPeakElevation {
+			let formattedPeakElevation = String(format: "%.2f", passWindow.peakElevation)
+			let formattedMaxPeakElevation = String(format: "%.2f", maxPeakElevation)
+			print("Auto schedule skipped peak-elevation pass: target=\(target.satelliteID), station=\(station.id), peakElevation=\(formattedPeakElevation), maxPeakElevation=\(formattedMaxPeakElevation)")
+			return false
+		}
+
+		guard target.requiresStationDaylight else {
+			return true
+		}
+
+		guard let latitude = station.latitude,
+			  let longitude = station.longitude else {
+			print("Auto schedule skipped daylight-only pass: station \(station.id) location is missing.")
+			return false
+		}
+
+		let midpoint = passWindow.start.addingTimeInterval(
+			passWindow.end.timeIntervalSince(passWindow.start) / 2
+		)
+		let solarElevation = SolarCalculator.solarElevation(
+			date: midpoint,
+			latitude: latitude,
+			longitude: longitude
+		)
+		let isDaylight = SolarCalculator.isDaylight(
+			date: midpoint,
+			latitude: latitude,
+			longitude: longitude
+		)
+
+		if !isDaylight {
+			let formattedSolarElevation = String(format: "%.2f", solarElevation)
+			print("Auto schedule skipped daylight-only pass: target=\(target.satelliteID), station=\(station.id), midpoint=\(midpoint), solarElevation=\(formattedSolarElevation)")
+		}
+
+		return isDaylight
 	}
 
 	private func resolveStations(for target: WatchTarget) async throws -> [WatchStationSnapshot] {

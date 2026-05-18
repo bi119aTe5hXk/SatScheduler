@@ -24,6 +24,23 @@ struct WatchTargetPredictionPreviewView: View {
 						Text("Satellite: \(target.satelliteName ?? target.name)")
 						Text("Transmitter: \(target.transmitterDescription ?? target.transmitterID)")
 						Text("Stations: \(stationDisplayText)")
+
+						if target.requiresStationDaylight || target.minPeakElevation != nil || target.maxPeakElevation != nil {
+							Divider()
+
+							VStack(alignment: .leading, spacing: 6) {
+								if target.requiresStationDaylight {
+									Label("Require station daylight", systemImage: "sun.max")
+										.foregroundStyle(.orange)
+								}
+
+								if let peakElevationRangeText {
+									Label(peakElevationRangeText, systemImage: "angle")
+										.foregroundStyle(.secondary)
+								}
+							}
+							.font(.caption)
+						}
 					}
 					.frame(maxWidth: .infinity, alignment: .leading)
 				}
@@ -163,6 +180,22 @@ struct WatchTargetPredictionPreviewView: View {
 			.joined(separator: ", ")
 	}
 	
+
+	private var peakElevationRangeText: String? {
+		let minText = target.minPeakElevation.map { String(format: "%.0f°", $0) }
+		let maxText = target.maxPeakElevation.map { String(format: "%.0f°", $0) }
+
+		switch (minText, maxText) {
+		case let (min?, max?):
+			return "Peak elevation: \(min) – \(max)"
+		case let (min?, nil):
+			return "Peak elevation: ≥ \(min)"
+		case let (nil, max?):
+			return "Peak elevation: ≤ \(max)"
+		case (nil, nil):
+			return nil
+		}
+	}
 
 	@MainActor
 	private func schedulePredictedObservations() async {

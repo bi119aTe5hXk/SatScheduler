@@ -15,6 +15,10 @@ struct PassWindow: Identifiable, Hashable {
 	let azimuthStart: Double
 	let azimuthEnd: Double
 
+	var peakElevation: Double {
+		maxElevation
+	}
+
 	var id: String {
 		"\(start.timeIntervalSince1970)-\(end.timeIntervalSince1970)-\(maxElevation)"
 	}

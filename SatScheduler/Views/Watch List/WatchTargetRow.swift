@@ -29,6 +29,18 @@ struct WatchTargetRow: View {
 			Text("Stations: \(stationDisplayText)")
 				.font(.caption)
 				.foregroundStyle(.secondary)
+
+			if target.requiresStationDaylight {
+				Label("Require station daylight", systemImage: "sun.max")
+					.font(.caption)
+					.foregroundStyle(.orange)
+			}
+
+			if let peakElevationRangeText {
+				Label(peakElevationRangeText, systemImage: "angle")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
 		}
 		.padding(.vertical, 4)
 	}
@@ -44,6 +56,20 @@ struct WatchTargetRow: View {
 			}
 			.joined(separator: ", ")
 	}
+
+	private var peakElevationRangeText: String? {
+		let minText = target.minPeakElevation.map { String(format: "%.0f°", $0) }
+		let maxText = target.maxPeakElevation.map { String(format: "%.0f°", $0) }
+
+		switch (minText, maxText) {
+		case let (min?, max?):
+			return "Peak elevation: \(min) – \(max)"
+		case let (min?, nil):
+			return "Peak elevation: ≥ \(min)"
+		case let (nil, max?):
+			return "Peak elevation: ≤ \(max)"
+		case (nil, nil):
+			return nil
+		}
+	}
 }
-
-

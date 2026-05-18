@@ -18,6 +18,12 @@ struct WatchTarget: Codable, Identifiable, Hashable {
 	var transmitterID: String
 	var transmitterDescription: String?
 	var centerFrequency: Int? = nil
+	
+	var requireStationDaylight: Bool? = nil
+
+	var requiresStationDaylight: Bool {
+		requireStationDaylight == true
+	}
 
 	var stationIDs: [Int]
 	var stationNames: [Int: String]? = nil
@@ -25,6 +31,9 @@ struct WatchTarget: Codable, Identifiable, Hashable {
 
 	var minElevation: Double?
 	var enabled: Bool = true
+	
+	var minPeakElevation: Double? = nil
+	var maxPeakElevation: Double? = nil
 }
 
 struct WatchStationSnapshot: Codable, Hashable {

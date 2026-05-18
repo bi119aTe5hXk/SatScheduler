@@ -40,6 +40,10 @@ final class WatchTargetStore {
 			print("Failed to encode watch targets for iCloud: \(error)")
 		}
 	}
+	
+	func replaceTargets(_ newTargets: [WatchTarget]) {
+		saveWatchTargets(newTargets)
+	}
 
 	func deleteAll() {
 		store.removeObject(forKey: storageKey)

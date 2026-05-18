@@ -40,9 +40,11 @@ final class AddWatchTargetViewModel: ObservableObject {
 		}
 		return satellites.filter { satellite in
 			let displayName = displayName(for: satellite).lowercased()
+			let aliases = satellite.names?.lowercased() ?? ""
 			let satID = satellite.id.lowercased()
 			let norad = satellite.norad_cat_id.map(String.init) ?? ""
 			return displayName.contains(keyword)
+				|| aliases.contains(keyword)
 				|| satID.contains(keyword)
 				|| norad.contains(keyword)
 		}
