@@ -28,8 +28,8 @@ struct StationTimeLineView: View {
 						onRefreshStation: { stationID in
 							await viewModel.refreshStation(stationID)
 						}
-
 					)
+					.frame(maxWidth: .infinity, alignment: .leading)
 
 //					Divider()
 //
@@ -101,4 +101,3 @@ struct StationTimeLineView: View {
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 	}
 }
-

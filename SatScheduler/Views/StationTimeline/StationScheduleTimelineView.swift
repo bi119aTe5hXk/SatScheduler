@@ -48,11 +48,11 @@ struct StationScheduleTimelineView: View {
 
 			ScrollView {
 				GeometryReader { geometry in
-					let timelineWidth = max(geometry.size.width - labelWidth, 1)
+					let timelineWidth = max(geometry.size.width, 1)
 
-					VStack(alignment: .leading, spacing: 10) {
+					VStack(alignment: .leading, spacing: 14) {
 						ForEach(stationSchedules) { stationSchedule in
-							HStack(spacing: 12) {
+							VStack(alignment: .leading, spacing: 8) {
 								VStack(alignment: .leading, spacing: 4) {
 									Text(stationSchedule.displayName)
 										.font(.caption)
@@ -81,7 +81,7 @@ struct StationScheduleTimelineView: View {
 									}
 									.font(.caption2)
 								}
-								.frame(width: labelWidth - 12, alignment: .leading)
+								.frame(maxWidth: .infinity, alignment: .leading)
 
 								ZStack(alignment: .leading) {
 									RoundedRectangle(cornerRadius: 6)
@@ -105,12 +105,14 @@ struct StationScheduleTimelineView: View {
 											.help(tooltip(for: observation))
 									}
 								}
-								.frame(width: timelineWidth, height: rowHeight)
+								.frame(maxWidth: .infinity)
+								.frame(height: rowHeight)
 							}
+							.frame(maxWidth: .infinity, alignment: .leading)
 						}
 					}
 				}
-				.frame(height: CGFloat(stationSchedules.count) * (rowHeight + 22))
+				.frame(height: CGFloat(stationSchedules.count) * (rowHeight + 56))
 			}
 			.frame(minHeight: 180, maxHeight: 420)
 		}
@@ -135,11 +137,10 @@ struct StationScheduleTimelineView: View {
 	}
 
 	private var timelineHeader: some View {
-		HStack {
+		VStack(alignment: .leading, spacing: 4) {
 			Text("Station")
 				.font(.caption)
 				.foregroundStyle(.secondary)
-				.frame(width: labelWidth - 12, alignment: .leading)
 
 			HStack {
 				Text(formatDateTime(timelineStartDate))
@@ -149,6 +150,7 @@ struct StationScheduleTimelineView: View {
 			.font(.caption)
 			.foregroundStyle(.secondary)
 		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
 	private var timelineEndDate: Date {

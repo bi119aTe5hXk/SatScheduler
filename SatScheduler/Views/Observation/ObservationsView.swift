@@ -41,9 +41,6 @@ struct ObservationsView: View {
 //						}
 //					}
 				}
-				.task {
-					await refreshObservations()
-				}
 				.sheet(isPresented: $isShowingObserverIDEditor) {
 					NavigationStack {
 						Form {
@@ -95,7 +92,7 @@ struct ObservationsView: View {
 		} else if viewModel.isLoading && viewModel.observations.isEmpty {
 			ProgressView("Loading observations...")
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
-		} else if let errorMessage = viewModel.errorMessage {
+		} else if let errorMessage = viewModel.errorMessage, viewModel.observations.isEmpty {
 			VStack(spacing: 12) {
 				Text(errorMessage)
 					.foregroundStyle(.red)
@@ -125,6 +122,9 @@ struct ObservationsView: View {
 					ObservationRowView(observation: observation)
 				}
 			}
+			.refreshable {
+				await refreshObservations()
+			}
 		}
 	}
 
@@ -149,4 +149,3 @@ struct ObservationsView: View {
 		return "Observations (\(viewModel.observations.count))"
 	}
 }
-
