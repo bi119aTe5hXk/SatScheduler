@@ -28,7 +28,12 @@ struct AutoSchedulePreviewView: View {
 							dismiss()
 						}
 					}
-
+#if os(iOS)
+					ToolbarItem(placement: .primaryAction) {
+						EditButton()
+							.disabled(viewModel.isPlanning || viewModel.isScheduling || viewModel.plan?.selectedCandidates.isEmpty != false)
+					}
+#endif
 					ToolbarItem(placement: .primaryAction) {
 						Button {
 							Task {
@@ -124,20 +129,21 @@ struct AutoSchedulePreviewView: View {
 						} else {
 							ForEach(plan.selectedCandidates) { candidate in
 								AutoScheduleCandidateRow(
-
 									candidate: candidate,
 									executionResult: viewModel.executionResult(for: candidate)
-
 								)
 								.swipeActions(edge: .trailing, allowsFullSwipe: true) {
-
 									Button(role: .destructive) {
 										viewModel.removeSelectedCandidate(candidate)
 									} label: {
 										Label("Remove", systemImage: "trash")
 									}
 								}
+								.moveDisabled(viewModel.isScheduling)
 								.disabled(viewModel.isScheduling)
+							}
+							.onMove { source, destination in
+								viewModel.moveSelectedCandidates(fromOffsets: source, toOffset: destination)
 							}
 						}
 					}

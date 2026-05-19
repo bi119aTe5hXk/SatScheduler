@@ -193,4 +193,41 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 		scheduleProgress = (createdObservations.count, remainingSelectedCandidates.count)
 	}
+	
+	func moveSelectedCandidates(fromOffsets source: IndexSet, toOffset destination: Int) {
+		guard !isScheduling, let currentPlan = plan else {
+			return
+		}
+
+		var reorderedSelectedCandidates = currentPlan.selectedCandidates
+		let movingCandidates = source.sorted().map { reorderedSelectedCandidates[$0] }
+
+		for index in source.sorted(by: >) {
+			reorderedSelectedCandidates.remove(at: index)
+		}
+
+		let adjustedDestination = destination - source.filter { $0 < destination }.count
+		let insertionIndex = max(0, min(adjustedDestination, reorderedSelectedCandidates.count))
+		reorderedSelectedCandidates.insert(contentsOf: movingCandidates, at: insertionIndex)
+
+		plan = AutoSchedulePlan(
+			createdAt: currentPlan.createdAt,
+			start: currentPlan.start,
+			end: currentPlan.end,
+			priorityMode: currentPlan.priorityMode,
+			candidates: currentPlan.candidates,
+			selectedCandidates: reorderedSelectedCandidates,
+			skippedCandidates: currentPlan.skippedCandidates,
+			existingObservations: currentPlan.existingObservations
+		)
+
+		executionResults = reorderedSelectedCandidates.map { candidate in
+			executionResults.first { result in
+				result.candidate.id == candidate.id
+			} ?? AutoScheduleExecutionResult(
+				candidate: candidate,
+				status: .pending
+			)
+		}
+	}
 }
