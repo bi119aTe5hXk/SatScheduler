@@ -31,7 +31,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 		}
 
 		do {
-			guard let tle = try await dbService.fetchLatestTLE(satelliteID: target.satelliteID) else {
+			guard let tle = try await TLECacheStore.shared.fetchLatestTLE(satelliteID: target.satelliteID) else {
 				errorMessage = "TLE not found for satellite \(target.satelliteID)."
 				return
 			}

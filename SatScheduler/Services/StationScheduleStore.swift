@@ -34,15 +34,42 @@ final class StationScheduleStore {
 		end: Date,
 		groundStationIDs: [Int]
 	) async throws -> StationScheduleCache {
-		let observations = try await networkService.fetchScheduledObservations(start: start, end: end, groundStationIDs: groundStationIDs)
-		let cache = buildCache(from: observations)
+		let observations = try await networkService.fetchScheduledObservations(
+			start: start,
+			end: end,
+			groundStationIDs: groundStationIDs
+		)
+		let refreshedCache = buildCache(from: observations)
+		let cache = mergedCache(
+			refreshedCache: refreshedCache,
+			refreshedStationIDs: Set(groundStationIDs)
+		)
 		save(cache)
 		return cache
 	}
 
 	@discardableResult
 	func replaceSchedule(with observations: [Observation]) -> StationScheduleCache {
-		let cache = buildCache(from: observations)
+		let refreshedCache = buildCache(from: observations)
+		let refreshedStationIDs = Set(refreshedCache.stationSchedules.map(\.stationID))
+		let cache = mergedCache(
+			refreshedCache: refreshedCache,
+			refreshedStationIDs: refreshedStationIDs
+		)
+		save(cache)
+		return cache
+	}
+
+	@discardableResult
+	func replaceSchedule(
+		with observations: [Observation],
+		groundStationIDs: [Int]
+	) -> StationScheduleCache {
+		let refreshedCache = buildCache(from: observations)
+		let cache = mergedCache(
+			refreshedCache: refreshedCache,
+			refreshedStationIDs: Set(groundStationIDs)
+		)
 		save(cache)
 		return cache
 	}
@@ -136,6 +163,20 @@ final class StationScheduleStore {
 			.sorted { $0.displayName < $1.displayName }
 
 		return StationScheduleCache(updatedAt: Date(), stationSchedules: timelines)
+	}
+
+	private func mergedCache(
+		refreshedCache: StationScheduleCache,
+		refreshedStationIDs: Set<Int>
+	) -> StationScheduleCache {
+		let current = loadCachedSchedule()
+		let mergedTimelines = current.stationSchedules
+			.filter { !refreshedStationIDs.contains($0.stationID) } + refreshedCache.stationSchedules
+
+		return StationScheduleCache(
+			updatedAt: Date(),
+			stationSchedules: mergedTimelines.sorted { $0.displayName < $1.displayName }
+		)
 	}
 
 	private func save(_ cache: StationScheduleCache) {

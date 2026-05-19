@@ -72,7 +72,9 @@ final class StationTimeLineViewModel: ObservableObject {
 			)
 			stationSchedules = timelinesFromWatchTargets(mergedWith: cache.stationSchedules)
 			lastUpdatedAt = cache.updatedAt
-			message = "Station \(stationID) schedule refreshed."
+			let stationDisplayName = stationSchedules.first { $0.stationID == stationID }?.stationName
+			let stationName = stationDisplayName?.isEmpty == false ? stationDisplayName! : "Station"
+			message = "\(stationName) (\(stationID)) schedule refreshed."
 		} catch {
 			message = "Refresh failed: \(error.localizedDescription)"
 		}

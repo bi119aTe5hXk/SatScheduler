@@ -333,8 +333,10 @@ final class AutoSchedulePlanner {
 			return [:]
 		}
 
-		let entries = try await dbService.fetchLatestTLEs(satelliteIDs: satelliteIDs)
-		return Dictionary(entries.map { ($0.sat_id, $0) }, uniquingKeysWith: { first, _ in first })
+		let entries = try await TLECacheStore.shared.fetchLatestTLEs(
+			satelliteIDs: satelliteIDs
+		)
+		return Dictionary(uniqueKeysWithValues: entries.map { ($0.sat_id, $0) })
 	}
 
 	private func resolveStations(for target: WatchTarget) async throws -> [WatchStationSnapshot] {
