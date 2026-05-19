@@ -71,6 +71,35 @@ struct Observation: Codable, Identifiable, Hashable {
 	let observer: String?
 	let observation_frequency: Int?
 
+	var startDate: Date? {
+		Self.parseObservationDate(start)
+	}
+
+	var endDate: Date? {
+		Self.parseObservationDate(end)
+	}
+
+	private static func parseObservationDate(_ string: String?) -> Date? {
+		guard let string else {
+			return nil
+		}
+
+		return observationDateFormatter.date(from: string)
+			?? observationDateFormatterWithoutFractionalSeconds.date(from: string)
+	}
+
+	private static let observationDateFormatter: ISO8601DateFormatter = {
+		let formatter = ISO8601DateFormatter()
+		formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		return formatter
+	}()
+
+	private static let observationDateFormatterWithoutFractionalSeconds: ISO8601DateFormatter = {
+		let formatter = ISO8601DateFormatter()
+		formatter.formatOptions = [.withInternetDateTime]
+		return formatter
+	}()
+
 	var audio: String? {
 		payload
 	}

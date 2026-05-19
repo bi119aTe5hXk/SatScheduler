@@ -15,12 +15,7 @@ struct WatchListView: View {
 	@State private var isEditingWatchTargets = false
 #endif
 	@State private var isShowingAddTargetSheet = false
-	@State private var isAutoScheduling = false
-	@State private var autoScheduleMessage: String?
-	@State private var autoScheduleResult: AutoScheduleBatchResult?
-	@State private var autoScheduleProgress: [AutoScheduleTargetResult] = []
-	@State private var isShowingAutoScheduleProgress = false
-	@State private var isAutoScheduleCancelled = false
+	@State private var isShowingAutoSchedulePreview = false
 	@State private var predictionPreviewTarget: WatchTarget?
 
 	var body: some View {
@@ -102,17 +97,16 @@ struct WatchListView: View {
 				}
 				ToolbarItemGroup(placement: .primaryAction) {
 					Button {
-						Task {
-							await runAutoSchedule()
+						guard authManager.isLoggedIn else {
+							authManager.requireLoginPrompt()
+							return
 						}
+
+						isShowingAutoSchedulePreview = true
 					} label: {
-						if isAutoScheduling {
-							ProgressView()
-						} else {
-							Label("Auto Schedule", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.circle")
-						}
+						Label("Auto Schedule", systemImage: "arrow.trianglehead.2.clockwise.rotate.90.circle")
 					}
-					.disabled(viewModel.watchTargets.isEmpty || isAutoScheduling)
+					.disabled(viewModel.watchTargets.isEmpty)
 
 					Button {
 						isShowingAddTargetSheet = true
@@ -132,9 +126,14 @@ struct WatchListView: View {
 				WatchTargetPredictionPreviewView(target: target)
 					.adaptiveWatchSheetSizing()
 			}
-			.sheet(isPresented: $isShowingAutoScheduleProgress) {
-				autoScheduleProgressSheet
-					.adaptiveWatchSheetSizing()
+			.sheet(isPresented: $isShowingAutoSchedulePreview) {
+				let startDate = Date()
+				AutoSchedulePreviewView(
+					targets: viewModel.watchTargets,
+					start: startDate,
+					end: startDate.addingTimeInterval(2 * 24 * 60 * 60)
+				)
+				.adaptiveWatchSheetSizing()
 			}
 			.task {
 				viewModel.loadWatchTargets()
@@ -156,136 +155,6 @@ struct WatchListView: View {
 			isEditingWatchTargets.toggle()
 #endif
 		}
-	}
-
-	private var autoScheduleProgressSheet: some View {
-		NavigationStack {
-			List {
-				Section {
-					HStack {
-						Text("Status")
-						Spacer()
-						if isAutoScheduling {
-							if !isAutoScheduleCancelled {
-								ProgressView()
-									.controlSize(.small)
-							}
-
-							Text(isAutoScheduleCancelled ? "Stopping" : "Running")
-								.foregroundStyle(isAutoScheduleCancelled ? .red : .green)
-						} else if isAutoScheduleCancelled {
-							Text("Stopped")
-								.foregroundStyle(.red)
-						} else {
-							Text("Completed")
-								.foregroundStyle(.secondary)
-						}
-					}
-
-					if let autoScheduleResult {
-						Text("Created \(autoScheduleResult.createdCount) observation(s).")
-						Text("Succeeded targets: \(autoScheduleResult.successResults.count)")
-						Text("Skipped targets: \(autoScheduleResult.skippedResults.count)")
-						Text("Failed targets: \(autoScheduleResult.failureResults.count)")
-					} else {
-						Text("Completed targets: \(autoScheduleProgress.count)")
-					}
-				}
-
-				Section("Targets") {
-					if autoScheduleProgress.isEmpty {
-						Text("Waiting to start...")
-							.foregroundStyle(.secondary)
-					} else {
-						ForEach(autoScheduleProgress.reversed()) { result in
-							VStack(alignment: .leading, spacing: 4) {
-								Text(result.target.satelliteName ?? result.target.satelliteID)
-									.font(.headline)
-								Text(result.status.displayMessage)
-									.font(.caption)
-									.foregroundStyle(.secondary)
-							}
-						}
-					}
-				}
-			}
-			.navigationTitle("Auto Schedule")
-			.toolbar {
-				ToolbarItem(placement: .cancellationAction) {
-					Button("Close") {
-						isShowingAutoScheduleProgress = false
-					}
-					.disabled(isAutoScheduling)
-				}
-
-				ToolbarItem(placement: .primaryAction) {
-					Button("Stop", role: .destructive) {
-						isAutoScheduleCancelled = true
-					}
-					.disabled(!isAutoScheduling || isAutoScheduleCancelled)
-				}
-			}
-		}
-	}
-
-	private func runAutoSchedule() async {
-		guard authManager.isLoggedIn else {
-			authManager.requireLoginPrompt()
-			return
-		}
-
-		let targets = viewModel.watchTargets
-		guard !targets.isEmpty else {
-			autoScheduleMessage = "No watch targets to schedule."
-			return
-		}
-
-		autoScheduleMessage = nil
-		autoScheduleResult = nil
-		autoScheduleProgress = []
-		isAutoScheduleCancelled = false
-		isShowingAutoScheduleProgress = true
-
-		isAutoScheduling = true
-		defer { isAutoScheduling = false }
-
-		let scheduler = AutoScheduler()
-		let startDate = Date()
-		let endDate = startDate.addingTimeInterval(2 * 24 * 60 * 60)
-		let result = await scheduler.scheduleTargets(
-			targets,
-			from: startDate,
-			to: endDate,
-			delayBetweenTargets: 5,
-			shouldCancel: {
-				isAutoScheduleCancelled
-			},
-			onProgress: { targetResult in
-				autoScheduleProgress.append(targetResult)
-			}
-		)
-
-		autoScheduleResult = result
-		autoScheduleMessage = autoScheduleSummaryMessage(for: result)
-	}
-
-	private func autoScheduleSummaryMessage(for result: AutoScheduleBatchResult) -> String {
-		var lines: [String] = [
-			"Created \(result.createdCount) observation(s).",
-			"Succeeded targets: \(result.successResults.count)",
-			"Skipped targets: \(result.skippedResults.count)",
-			"Failed targets: \(result.failureResults.count)"
-		]
-
-		if !result.failureResults.isEmpty {
-			lines.append("")
-			lines.append("Failed targets:")
-			lines.append(contentsOf: result.failureResults.map { result in
-				"- \(result.target.satelliteID): \(result.status.displayMessage)"
-			})
-		}
-
-		return lines.joined(separator: "\n")
 	}
 }
 

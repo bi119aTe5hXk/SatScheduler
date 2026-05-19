@@ -53,6 +53,21 @@ final class SatNOGSDBService {
 		)
 	}
 
+	func fetchTLEEntries(satelliteIDs: [String]) async throws -> [TLEEntry] {
+		let uniqueSatelliteIDs = Array(Set(satelliteIDs)).sorted()
+		guard !uniqueSatelliteIDs.isEmpty else {
+			return []
+		}
+
+		return try await client.get(
+			host: .db,
+			path: "tle/",
+			queryItems: [
+				URLQueryItem(name: "sat_id", value: uniqueSatelliteIDs.joined(separator: ","))
+			]
+		)
+	}
+
 	func fetchLatestTLE(satelliteID: String) async throws -> TLEEntry? {
 		let entries = try await fetchTLEEntries(satelliteID: satelliteID)
 
@@ -70,6 +85,29 @@ final class SatNOGSDBService {
 				return lhsDate > rhsDate
 			}
 			.first
+	}
+
+	func fetchLatestTLEs(satelliteIDs: [String]) async throws -> [TLEEntry] {
+		let entries = try await fetchTLEEntries(satelliteIDs: satelliteIDs)
+		let requestedIDs = Set(satelliteIDs)
+		let groupedEntries = Dictionary(grouping: entries.filter { requestedIDs.contains($0.sat_id) }) { entry in
+			entry.sat_id
+		}
+
+		return groupedEntries.values.compactMap { entries in
+			entries.sorted { lhs, rhs in
+				guard let lhsDate = lhs.updatedDate else {
+					return false
+				}
+
+				guard let rhsDate = rhs.updatedDate else {
+					return true
+				}
+
+				return lhsDate > rhsDate
+			}
+			.first
+		}
 	}
 }
 

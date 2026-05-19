@@ -26,6 +26,8 @@ struct SettingsView: View {
 	@State private var watchListBackupShareItem: WatchListBackupShareItem?
 	@State private var watchListBackupMessage: String?
 	@State private var watchListBackupErrorMessage: String?
+
+	@StateObject private var autoScheduleSettingsStore = AutoScheduleSettingsStore.shared
 	
 	@AppStorage("SatScheduler.timeDisplayMode") private var timeDisplayMode = TimeDisplayMode.utc.rawValue
 
@@ -125,6 +127,30 @@ struct SettingsView: View {
 						.font(.caption)
 						.foregroundStyle(.secondary)
 
+				}
+
+				Section("Auto Schedule") {
+					Toggle("Show preview before scheduling", isOn: Binding(
+						get: { autoScheduleSettingsStore.settings.showPreviewBeforeScheduling },
+						set: { autoScheduleSettingsStore.update(showPreviewBeforeScheduling: $0) }
+					))
+
+					Picker("Default Priority", selection: Binding(
+						get: { autoScheduleSettingsStore.settings.priorityMode },
+						set: { autoScheduleSettingsStore.update(priorityMode: $0) }
+					)) {
+						ForEach(AutoSchedulePriorityMode.allCases) { mode in
+							Text(mode.title).tag(mode)
+						}
+					}
+
+					Text(autoScheduleSettingsStore.settings.priorityMode.description)
+						.font(.caption)
+						.foregroundStyle(.secondary)
+
+					Text("These settings are synced with iCloud key-value storage when available.")
+						.font(.caption)
+						.foregroundStyle(.secondary)
 				}
 				Section("Watch List Backup") {
 					Button {
