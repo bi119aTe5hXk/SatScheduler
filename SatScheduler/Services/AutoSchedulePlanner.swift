@@ -240,11 +240,13 @@ final class AutoSchedulePlanner {
 			return []
 		}
 
-		return try await networkService.fetchScheduledObservations(
+		let observations = try await networkService.fetchScheduledObservations(
 			start: start,
 			end: end,
 			groundStationIDs: stationIDs
 		)
+		StationScheduleStore.shared.replaceSchedule(with: observations)
+		return observations
 	}
 
 	private func shouldIncludePassWindow(

@@ -107,6 +107,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 				end: requestEnd,
 				groundStationIDs: stationIDs
 			)
+			StationScheduleStore.shared.replaceSchedule(with: existingObservations)
 
 			let conflictResult = ObservationScheduleConflictResolver.filterConflicts(
 				requests: requests,

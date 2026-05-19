@@ -40,6 +40,13 @@ final class StationScheduleStore {
 		return cache
 	}
 
+	@discardableResult
+	func replaceSchedule(with observations: [Observation]) -> StationScheduleCache {
+		let cache = buildCache(from: observations)
+		save(cache)
+		return cache
+	}
+
 	func mergeCreatedObservations(_ observations: [Observation]) {
 		let current = loadCachedSchedule()
 		let mapped = observations.compactMap(Self.makeScheduleObservation)
