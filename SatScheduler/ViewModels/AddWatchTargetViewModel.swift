@@ -24,11 +24,15 @@ final class AddWatchTargetViewModel: ObservableObject {
 	@Published var isLoadingSatellites = false
 	@Published var isLoadingTransmitters = false
 	@Published var isLoadingStations = false
+	@Published var isLoadingRecommendedTransmitter = false
+	@Published var recommendedTransmitterID: String?
+	@Published var recommendedTransmitterObservationCount: Int = 0
 	
 	@Published var stationSearchText = ""
 
 	private let dbService = SatNOGSDBService()
 	private let networkService = SatNOGSNetworkService()
+	private var recommendationTask: Task<Void, Never>?
 
 	var filteredSatellites: [SatelliteModel] {
 
@@ -92,6 +96,14 @@ final class AddWatchTargetViewModel: ObservableObject {
 		return transmitters.first { $0.id == selectedTransmitterID }
 	}
 
+	var recommendedTransmitter: Transmitter? {
+		guard let recommendedTransmitterID else {
+			return nil
+		}
+
+		return transmitters.first { $0.id == recommendedTransmitterID }
+	}
+
 	var centerFrequencyHz: Int? {
 		let trimmed = centerFrequencyMHzText.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty, let mhz = Double(trimmed) else {
@@ -113,6 +125,19 @@ final class AddWatchTargetViewModel: ObservableObject {
 		} else {
 			centerFrequencyMHzText = ""
 		}
+	}
+
+	func isRecommendedTransmitter(_ transmitter: Transmitter) -> Bool {
+		transmitter.id == recommendedTransmitterID
+	}
+
+	func recommendedDisplayName(for transmitter: Transmitter) -> String {
+		let baseName = displayName(for: transmitter)
+		guard isRecommendedTransmitter(transmitter) else {
+			return baseName
+		}
+
+		return "👍 \(baseName)"
 	}
 
 	func loadInitialData() async {
@@ -152,6 +177,11 @@ final class AddWatchTargetViewModel: ObservableObject {
 			return
 		}
 
+		recommendationTask?.cancel()
+		recommendedTransmitterID = nil
+		recommendedTransmitterObservationCount = 0
+		isLoadingRecommendedTransmitter = false
+
 		isLoadingTransmitters = true
 		defer { isLoadingTransmitters = false }
 
@@ -159,11 +189,84 @@ final class AddWatchTargetViewModel: ObservableObject {
 			transmitters = try await dbService.fetchTransmitters(satelliteID: satelliteID)
 			selectedTransmitterID = nil
 			centerFrequencyMHzText = ""
+			startRecommendedTransmitterLoad(for: satelliteID)
 		} catch {
 			errorMessage = error.localizedDescription
 			transmitters = []
 			selectedTransmitterID = nil
 			centerFrequencyMHzText = ""
+		}
+	}
+
+	private func startRecommendedTransmitterLoad(for satelliteID: String) {
+		guard let satellite = satellites.first(where: { $0.id == satelliteID }),
+			  let noradCatID = satellite.norad_cat_id else {
+			return
+		}
+
+		recommendationTask?.cancel()
+		recommendationTask = Task { [weak self] in
+			await self?.loadRecommendedTransmitter(
+				noradCatID: noradCatID,
+				satelliteID: satelliteID
+			)
+		}
+	}
+
+	private func loadRecommendedTransmitter(
+		noradCatID: Int,
+		satelliteID: String
+	) async {
+		isLoadingRecommendedTransmitter = true
+		defer {
+			isLoadingRecommendedTransmitter = false
+		}
+
+		do {
+			let observations = try await networkService.fetchGoodObservations(
+				noradCatID: noradCatID,
+				maxPages: 3
+			)
+
+			guard !Task.isCancelled,
+				  selectedSatelliteID == satelliteID else {
+				return
+			}
+
+			let availableTransmitterIDs = Set(transmitters.map { $0.id })
+			let transmitterCounts = observations.reduce(into: [String: Int]()) { counts, observation in
+				guard let transmitterID = observation.transmitter_uuid,
+					  availableTransmitterIDs.contains(transmitterID) else {
+					return
+				}
+
+				counts[transmitterID, default: 0] += 1
+			}
+
+			guard let best = transmitterCounts.max(by: { lhs, rhs in
+				if lhs.value != rhs.value {
+					return lhs.value < rhs.value
+				}
+
+				return lhs.key > rhs.key
+			}) else {
+				recommendedTransmitterID = nil
+				recommendedTransmitterObservationCount = 0
+				return
+			}
+
+			recommendedTransmitterID = best.key
+			recommendedTransmitterObservationCount = best.value
+		} catch is CancellationError {
+			return
+		} catch {
+			guard !Task.isCancelled else {
+				return
+			}
+
+			print("Failed to load recommended transmitter: \(error.localizedDescription)")
+			recommendedTransmitterID = nil
+			recommendedTransmitterObservationCount = 0
 		}
 	}
 

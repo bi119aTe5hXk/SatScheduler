@@ -103,6 +103,20 @@ final class SatNOGSNetworkService {
 		)
 	}
 	
+	func fetchGoodObservations(
+		noradCatID: Int,
+		maxPages: Int = 3
+	) async throws -> [Observation] {
+		try await fetchObservationPages(
+			queryItems: [
+				URLQueryItem(name: "status", value: "good"),
+				URLQueryItem(name: "norad_cat_id", value: String(noradCatID))
+			],
+			maxPages: maxPages,
+			logPrefix: "good observations for NORAD \(noradCatID)"
+		)
+	}
+	
 	func fetchObservations(
 		groundStationID: Int? = nil,
 		observerID: Int? = nil,
@@ -171,11 +185,28 @@ final class SatNOGSNetworkService {
 		queryItems: [URLQueryItem],
 		logPrefix: String
 	) async throws -> [Observation] {
+		try await fetchObservationPages(
+			queryItems: queryItems,
+			maxPages: nil,
+			logPrefix: logPrefix
+		)
+	}
+
+	private func fetchObservationPages(
+		queryItems: [URLQueryItem],
+		maxPages: Int?,
+		logPrefix: String
+	) async throws -> [Observation] {
 		var observations: [Observation] = []
 		var nextCursor: String?
 		var seenCursors = Set<String>()
+		var fetchedPageCount = 0
 
 		repeat {
+			if let maxPages, fetchedPageCount >= maxPages {
+				break
+			}
+
 			var pageItems = queryItems
 
 			if let nextCursor {
@@ -193,6 +224,7 @@ final class SatNOGSNetworkService {
 				requiresToken: false
 			)
 
+			fetchedPageCount += 1
 			observations.append(contentsOf: page.results)
 
 			let resolvedNextCursor = page.nextCursor ?? Self.fallbackNextCursor(from: page.results)
@@ -202,7 +234,11 @@ final class SatNOGSNetworkService {
 				nextCursor = resolvedNextCursor
 			}
 
-			print("Fetched page for \(logPrefix): \(page.results.count) observation(s), nextCursor: \(nextCursor ?? "nil")")
+			print("Fetched page \(fetchedPageCount) for \(logPrefix): \(page.results.count) observation(s), nextCursor: \(nextCursor ?? "nil")")
+			
+			if nextCursor != nil {
+				try? await Task.sleep(nanoseconds: 1_000_000_000)
+			}
 		} while nextCursor != nil
 
 		return observations

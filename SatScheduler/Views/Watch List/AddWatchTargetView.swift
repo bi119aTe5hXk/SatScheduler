@@ -98,7 +98,7 @@ struct AddWatchTargetView: View {
 								Button {
 									viewModel.selectTransmitter(transmitter)
 								} label: {
-									Text(viewModel.displayName(for: transmitter))
+									Text(viewModel.recommendedDisplayName(for: transmitter))
 								}
 							}
 						} label: {
@@ -111,6 +111,20 @@ struct AddWatchTargetView: View {
 								Image(systemName: "chevron.down")
 									.foregroundStyle(.secondary)
 							}
+						}
+
+						if viewModel.isLoadingRecommendedTransmitter {
+							HStack(spacing: 6) {
+								ProgressView()
+									.controlSize(.small)
+								Text("Finding recommended transmitter...")
+							}
+							.font(.caption)
+							.foregroundStyle(.secondary)
+						} else if let recommendedTransmitter = viewModel.recommendedTransmitter {
+							Text("👍 Recommended: \(viewModel.displayName(for: recommendedTransmitter)) based on \(viewModel.recommendedTransmitterObservationCount) good observation(s).")
+								.font(.caption)
+								.foregroundStyle(.orange)
 						}
 
 						if let transmitter = viewModel.selectedTransmitter {
@@ -297,7 +311,7 @@ struct AddWatchTargetView: View {
 			return "Select Transmitter"
 		}
 
-		return viewModel.displayName(for: transmitter)
+		return viewModel.recommendedDisplayName(for: transmitter)
 	}
 
 	private var parsedMinPeakElevation: Double? {
