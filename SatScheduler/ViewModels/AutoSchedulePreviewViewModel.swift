@@ -16,6 +16,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var isPlanning = false
 	@Published var isScheduling = false
 	@Published var scheduleProgress: (created: Int, total: Int) = (0, 0)
+	@Published var executionResults: [AutoScheduleExecutionResult] = []
 	@Published var message: String?
 
 	private let planner: AutoSchedulePlanner
@@ -41,8 +42,14 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 					return
 				}
 
-				if self.plan == nil && !self.isPlanning && !self.isScheduling {
-					self.priorityMode = priorityMode
+				guard !self.isPlanning && !self.isScheduling else {
+					return
+				}
+
+				self.priorityMode = priorityMode
+				if let plan = self.plan {
+					self.plan = plan.resorted(priorityMode: priorityMode)
+					self.resetExecutionResults(for: self.plan)
 				}
 			}
 			.store(in: &cancellables)
@@ -63,13 +70,21 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 
 		do {
-			plan = try await planner.makePlan(
-				targets: targets,
-				start: start,
-				end: end,
-				priorityMode: priorityMode
-			)
+			if let currentPlan = plan,
+			   currentPlan.start == start,
+			   currentPlan.end == end {
+				plan = currentPlan.resorted(priorityMode: priorityMode)
+			} else {
+				plan = try await planner.makePlan(
+					targets: targets,
+					start: start,
+					end: end,
+					priorityMode: priorityMode
+				)
+			}
+
 			createdObservations = []
+			resetExecutionResults(for: plan)
 			message = nil
 		} catch {
 			message = "Failed to calculate auto schedule plan: \(error.localizedDescription)"
@@ -83,33 +98,99 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 
 		isScheduling = true
 		scheduleProgress = (0, plan.selectedCount)
+		createdObservations = []
+		resetExecutionResults(for: plan)
 		defer {
 			isScheduling = false
 		}
 
-		do {
-			let observations = try await scheduler.schedulePlan(
-				plan,
-				delayBetweenRequests: 1,
-				onProgress: { created, total in
-					self.scheduleProgress = (created, total)
-				}
-			)
-			createdObservations = observations
-			message = "Created \(observations.count) observation(s)."
-		} catch {
-			message = "Failed to schedule observations: \(error.localizedDescription)"
-		}
+		let summary = await scheduler.schedulePlanContinuingOnError(
+			plan,
+			delayBetweenRequests: 1,
+			onResult: { result in
+				self.updateExecutionResult(result)
+			},
+			onProgress: { created, total in
+				self.scheduleProgress = (created, total)
+			}
+		)
+
+		createdObservations = summary.createdObservations
+		message = "Created \(summary.createdObservations.count) observation(s), failed \(summary.failureResults.count) request(s)."
 	}
 	
 	func resortCurrentPlan(priorityMode: AutoSchedulePriorityMode) {
+		guard !isPlanning && !isScheduling else {
+			return
+		}
+
 		self.priorityMode = priorityMode
 		if let plan {
 			self.plan = plan.resorted(priorityMode: priorityMode)
+			resetExecutionResults(for: self.plan)
+		}
+	}
+
+	func executionResult(for candidate: AutoScheduleCandidate) -> AutoScheduleExecutionResult? {
+		executionResults.first { result in
+			result.candidate.id == candidate.id
+		}
+	}
+
+	private func resetExecutionResults(for plan: AutoSchedulePlan?) {
+		guard let plan else {
+			executionResults = []
+			return
+		}
+
+		executionResults = plan.selectedCandidates.map { candidate in
+			AutoScheduleExecutionResult(
+				candidate: candidate,
+				status: .pending
+			)
+		}
+	}
+
+	private func updateExecutionResult(_ result: AutoScheduleExecutionResult) {
+		if let index = executionResults.firstIndex(where: { existingResult in
+			existingResult.candidate.id == result.candidate.id
+		}) {
+			executionResults[index] = result
+		} else {
+			executionResults.append(result)
 		}
 	}
 
 	func clearMessage() {
 		message = nil
+	}
+	
+	func removeSelectedCandidate(_ candidate: AutoScheduleCandidate) {
+		guard !isScheduling, let currentPlan = plan else {
+			return
+		}
+
+		let remainingCandidates = currentPlan.candidates.filter { $0.id != candidate.id }
+		let remainingSelectedCandidates = currentPlan.selectedCandidates.filter { $0.id != candidate.id }
+		let remainingSkippedCandidates = currentPlan.skippedCandidates.filter { skippedCandidate in
+			skippedCandidate.candidate.id != candidate.id &&
+			skippedCandidate.conflictingCandidate?.id != candidate.id
+		}
+
+		plan = AutoSchedulePlan(
+			createdAt: currentPlan.createdAt,
+			start: currentPlan.start,
+			end: currentPlan.end,
+			priorityMode: currentPlan.priorityMode,
+			candidates: remainingCandidates,
+			selectedCandidates: remainingSelectedCandidates,
+			skippedCandidates: remainingSkippedCandidates,
+			existingObservations: currentPlan.existingObservations
+		)
+
+		executionResults.removeAll { result in
+			result.candidate.id == candidate.id
+		}
+		scheduleProgress = (createdObservations.count, remainingSelectedCandidates.count)
 	}
 }

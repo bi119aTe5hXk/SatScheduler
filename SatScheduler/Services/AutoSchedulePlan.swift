@@ -131,3 +131,49 @@ enum AutoScheduleSkipReason: Hashable {
 		}
 	}
 }
+
+struct AutoScheduleExecutionResult: Identifiable {
+	let id = UUID()
+	let candidate: AutoScheduleCandidate
+	let status: AutoScheduleExecutionStatus
+}
+
+enum AutoScheduleExecutionStatus: Equatable {
+
+	case pending
+	case running
+	case success(createdCount: Int)
+	case failure(message: String)
+	var title: String {
+		switch self {
+		case .pending:
+			return "Pending"
+		case .running:
+			return "Running"
+		case .success(let createdCount):
+			return "Created \(createdCount)"
+		case .failure(let message):
+			return "Failed: \(message)"
+		}
+	}
+}
+struct AutoScheduleExecutionSummary {
+	let results: [AutoScheduleExecutionResult]
+	let createdObservations: [Observation]
+	var successResults: [AutoScheduleExecutionResult] {
+		results.filter { result in
+			if case .success = result.status {
+				return true
+			}
+			return false
+		}
+	}
+	var failureResults: [AutoScheduleExecutionResult] {
+		results.filter { result in
+			if case .failure = result.status {
+				return true
+			}
+			return false
+		}
+	}
+}

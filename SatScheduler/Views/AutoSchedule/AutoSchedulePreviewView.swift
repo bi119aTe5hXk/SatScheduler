@@ -123,7 +123,21 @@ struct AutoSchedulePreviewView: View {
 							)
 						} else {
 							ForEach(plan.selectedCandidates) { candidate in
-								AutoScheduleCandidateRow(candidate: candidate)
+								AutoScheduleCandidateRow(
+
+									candidate: candidate,
+									executionResult: viewModel.executionResult(for: candidate)
+
+								)
+								.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+
+									Button(role: .destructive) {
+										viewModel.removeSelectedCandidate(candidate)
+									} label: {
+										Label("Remove", systemImage: "trash")
+									}
+								}
+								.disabled(viewModel.isScheduling)
 							}
 						}
 					}
@@ -173,7 +187,7 @@ struct AutoSchedulePreviewView: View {
 			.disabled(viewModel.isPlanning || viewModel.isScheduling || viewModel.plan?.selectedCandidates.isEmpty != false)
 		}
 		.padding()
-		.background(.bar)
+		.background(viewModel.isScheduling ? AnyShapeStyle(.bar) : AnyShapeStyle(.clear))
 	}
 
 	private func formatDateTime(_ date: Date) -> String {
@@ -183,4 +197,3 @@ struct AutoSchedulePreviewView: View {
 		return formatter.string(from: date)
 	}
 }
-

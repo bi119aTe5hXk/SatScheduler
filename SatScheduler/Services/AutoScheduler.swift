@@ -44,6 +44,67 @@ final class AutoScheduler {
 		return createdObservations
 	}
 
+	func schedulePlanContinuingOnError(
+		_ plan: AutoSchedulePlan,
+		delayBetweenRequests: TimeInterval = 0,
+		shouldCancel: (@MainActor () -> Bool)? = nil,
+		onResult: (@MainActor (AutoScheduleExecutionResult) -> Void)? = nil,
+		onProgress: (@MainActor (Int, Int) -> Void)? = nil
+	) async -> AutoScheduleExecutionSummary {
+		var results: [AutoScheduleExecutionResult] = []
+		var createdObservations: [Observation] = []
+		let candidates = plan.selectedCandidates
+
+		for (index, candidate) in candidates.enumerated() {
+			if await shouldCancel?() == true {
+				let cancelledResult = AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .failure(message: "Cancelled")
+				)
+				results.append(cancelledResult)
+				await onResult?(cancelledResult)
+				await onProgress?(createdObservations.count, candidates.count)
+				break
+			}
+
+			let runningResult = AutoScheduleExecutionResult(
+				candidate: candidate,
+				status: .running
+			)
+			await onResult?(runningResult)
+
+			do {
+				let observations = try await networkService.createObservations([candidate.request])
+				createdObservations.append(contentsOf: observations)
+
+				let successResult = AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .success(createdCount: observations.count)
+				)
+				results.append(successResult)
+				await onResult?(successResult)
+			} catch {
+				let failureResult = AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .failure(message: error.localizedDescription)
+				)
+				results.append(failureResult)
+				await onResult?(failureResult)
+			}
+
+			await onProgress?(createdObservations.count, candidates.count)
+
+			if index < candidates.count - 1, delayBetweenRequests > 0 {
+				try? await Task.sleep(nanoseconds: UInt64(delayBetweenRequests * 1_000_000_000))
+			}
+		}
+
+		return AutoScheduleExecutionSummary(
+			results: results,
+			createdObservations: createdObservations
+		)
+	}
+
 	func scheduleTargets(
 		_ targets: [WatchTarget],
 		from start: Date,
@@ -63,17 +124,44 @@ final class AutoScheduler {
 				priorityMode: .watchListOrder
 			)
 
-			let createdObservations = try await schedulePlan(
+			let executionSummary = await schedulePlanContinuingOnError(
 				plan,
 				delayBetweenRequests: delayBetweenTargets,
 				shouldCancel: shouldCancel,
+				onResult: nil,
 				onProgress: nil
 			)
+			let createdObservations = executionSummary.createdObservations
 
-			let createdByTargetID: [WatchTarget.ID?: [Observation]] = [:]
+			let resultsByTargetID = Dictionary(grouping: executionSummary.results) { result in
+				result.candidate.target.id
+			}
 
 			let targetResults = enabledTargets.map { target in
-				let createdCount = createdByTargetID[target.id]?.count ?? 0
+				let targetExecutionResults = resultsByTargetID[target.id] ?? []
+				let createdCount = targetExecutionResults.reduce(0) { partialResult, executionResult in
+					if case .success(let createdCount) = executionResult.status {
+						return partialResult + createdCount
+					}
+
+					return partialResult
+				}
+
+				if let failedResult = targetExecutionResults.first(where: { result in
+					if case .failure = result.status {
+						return true
+					}
+
+					return false
+				}),
+				case .failure(let message) = failedResult.status,
+				createdCount == 0 {
+					return AutoScheduleTargetResult(
+						target: target,
+						status: .failure(message: message)
+					)
+				}
+
 				return AutoScheduleTargetResult(
 					target: target,
 					status: .success(createdCount: createdCount)
@@ -120,13 +208,20 @@ final class AutoScheduler {
 			end: end,
 			priorityMode: priorityMode
 		)
-		return try await schedulePlan(plan)
+		let summary = await schedulePlanContinuingOnError(plan)
+		if summary.createdObservations.isEmpty, let firstFailure = summary.failureResults.first,
+		   case .failure(let message) = firstFailure.status {
+			throw AutoSchedulerError.requestFailed(message)
+		}
+
+		return summary.createdObservations
 	}
 }
 
 enum AutoSchedulerError: LocalizedError {
 	case tleNotFound(String)
 	case stationSnapshotNotFound
+	case requestFailed(String)
 
 	var errorDescription: String? {
 		switch self {
@@ -134,6 +229,8 @@ enum AutoSchedulerError: LocalizedError {
 			return "TLE not found for satellite \(satelliteID)."
 		case .stationSnapshotNotFound:
 			return "Station snapshot not found. Please refresh the watch target stations."
+		case .requestFailed(let message):
+			return message
 		}
 	}
 }
