@@ -16,6 +16,8 @@ struct AddWatchTargetView: View {
 	@State private var requireStationDaylight = false
 	@State private var minPeakElevationText = ""
 	@State private var maxPeakElevationText = ""
+	@State private var minAzimuthText = ""
+	@State private var maxAzimuthText = ""
 
 	var body: some View {
 		NavigationStack {
@@ -220,6 +222,38 @@ struct AddWatchTargetView: View {
 								.foregroundStyle(.red)
 						}
 					}
+
+					VStack(alignment: .leading, spacing: 8) {
+						Text("Azimuth range")
+							.font(.subheadline)
+
+						HStack {
+							TextField("Min °", text: $minAzimuthText)
+								.textFieldStyle(.roundedBorder)
+#if os(iOS)
+								.keyboardType(.decimalPad)
+#endif
+
+							Text("–")
+								.foregroundStyle(.secondary)
+
+							TextField("Max °", text: $maxAzimuthText)
+								.textFieldStyle(.roundedBorder)
+#if os(iOS)
+								.keyboardType(.decimalPad)
+#endif
+						}
+
+						Text("Optional. Passes are kept if any point of the trajectory crosses this azimuth range. Use 300–60 to cover a range crossing north.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+
+						if let azimuthValidationMessage {
+							Text(azimuthValidationMessage)
+								.font(.caption)
+								.foregroundStyle(.red)
+						}
+					}
 				}
 
 				if let errorMessage = viewModel.errorMessage {
@@ -243,10 +277,12 @@ struct AddWatchTargetView: View {
 							target.requireStationDaylight = requireStationDaylight ? true : nil
 							target.minPeakElevation = parsedMinPeakElevation
 							target.maxPeakElevation = parsedMaxPeakElevation
+							target.minAzimuth = parsedMinAzimuth
+							target.maxAzimuth = parsedMaxAzimuth
 							onSave(target)
 						}
 					}
-					.disabled(!viewModel.canSave || !isPeakElevationRangeValid)
+					.disabled(!viewModel.canSave || !isPeakElevationRangeValid || !isAzimuthRangeValid)
 				}
 			}
 			.task {
@@ -304,6 +340,54 @@ struct AddWatchTargetView: View {
 		}
 
 		guard let value = Double(trimmed), value >= 0, value <= 90 else {
+			return nil
+		}
+
+		return value
+	}
+
+	private var parsedMinAzimuth: Double? {
+		parseAzimuth(minAzimuthText)
+	}
+
+	private var parsedMaxAzimuth: Double? {
+		parseAzimuth(maxAzimuthText)
+	}
+
+	private var isAzimuthRangeValid: Bool {
+		azimuthValidationMessage == nil
+	}
+
+	private var azimuthValidationMessage: String? {
+		let minText = minAzimuthText.trimmingCharacters(in: .whitespacesAndNewlines)
+		let maxText = maxAzimuthText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+		if minText.isEmpty && maxText.isEmpty {
+			return nil
+		}
+
+		if minText.isEmpty || maxText.isEmpty {
+			return "Input both minimum and maximum azimuth, or leave both blank."
+		}
+
+		if parsedMinAzimuth == nil {
+			return "Minimum azimuth must be between 0 and 360 degrees."
+		}
+
+		if parsedMaxAzimuth == nil {
+			return "Maximum azimuth must be between 0 and 360 degrees."
+		}
+
+		return nil
+	}
+
+	private func parseAzimuth(_ text: String) -> Double? {
+		let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty else {
+			return nil
+		}
+
+		guard let value = Double(trimmed), value >= 0, value <= 360 else {
 			return nil
 		}
 

@@ -25,17 +25,23 @@ struct WatchTargetPredictionPreviewView: View {
 						Text("Transmitter: \(target.transmitterDescription ?? target.transmitterID)")
 						Text("Stations: \(stationDisplayText)")
 
-						if target.requiresStationDaylight || target.minPeakElevation != nil || target.maxPeakElevation != nil {
+						if target.requiresStationDaylight ||
+							target.minPeakElevation != nil ||
+							target.maxPeakElevation != nil ||
+							target.minAzimuth != nil ||
+							target.maxAzimuth != nil {
 							Divider()
-
 							VStack(alignment: .leading, spacing: 6) {
 								if target.requiresStationDaylight {
 									Label("Require station daylight", systemImage: "sun.max")
 										.foregroundStyle(.orange)
 								}
-
 								if let peakElevationRangeText {
 									Label(peakElevationRangeText, systemImage: "angle")
+										.foregroundStyle(.secondary)
+								}
+								if let azimuthRangeText {
+									Label(azimuthRangeText, systemImage: "location.north.line")
 										.foregroundStyle(.secondary)
 								}
 							}
@@ -195,6 +201,18 @@ struct WatchTargetPredictionPreviewView: View {
 		case (nil, nil):
 			return nil
 		}
+	}
+	
+	private var azimuthRangeText: String? {
+
+		guard let minAzimuth = target.minAzimuth,
+			  let maxAzimuth = target.maxAzimuth else {
+			return nil
+		}
+		let minText = String(format: "%.0f°", minAzimuth)
+		let maxText = String(format: "%.0f°", maxAzimuth)
+		return "Azimuth: \(minText) – \(maxText)"
+
 	}
 
 	@MainActor

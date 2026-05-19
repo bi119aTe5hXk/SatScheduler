@@ -244,6 +244,15 @@ final class AutoScheduler {
 			return false
 		}
 
+		if !passesAzimuthFilter(passWindow, target: target) {
+			let formattedStartAzimuth = String(format: "%.2f", passWindow.azimuthStart)
+			let formattedEndAzimuth = String(format: "%.2f", passWindow.azimuthEnd)
+			let formattedMinAzimuth = target.minAzimuth.map { String(format: "%.2f", $0) } ?? "nil"
+			let formattedMaxAzimuth = target.maxAzimuth.map { String(format: "%.2f", $0) } ?? "nil"
+			print("Auto schedule skipped azimuth pass: target=\(target.satelliteID), station=\(station.id), azimuthStart=\(formattedStartAzimuth), azimuthEnd=\(formattedEndAzimuth), minAzimuth=\(formattedMinAzimuth), maxAzimuth=\(formattedMaxAzimuth)")
+			return false
+		}
+
 		guard target.requiresStationDaylight else {
 			return true
 		}
@@ -274,6 +283,45 @@ final class AutoScheduler {
 		}
 
 		return isDaylight
+	}
+
+	private func passesAzimuthFilter(
+		_ passWindow: PassWindow,
+		target: WatchTarget
+	) -> Bool {
+		guard let minAzimuth = target.minAzimuth,
+			  let maxAzimuth = target.maxAzimuth else {
+			return true
+		}
+
+		return passWindow.azimuthSamples.contains { azimuth in
+			isAzimuth(
+				azimuth,
+				insideRangeFrom: minAzimuth,
+				to: maxAzimuth
+			)
+		}
+	}
+
+	private func isAzimuth(
+		_ azimuth: Double,
+		insideRangeFrom minAzimuth: Double,
+		to maxAzimuth: Double
+	) -> Bool {
+		let normalizedAzimuth = normalizeAzimuth(azimuth)
+		let normalizedMinAzimuth = normalizeAzimuth(minAzimuth)
+		let normalizedMaxAzimuth = normalizeAzimuth(maxAzimuth)
+
+		if normalizedMinAzimuth <= normalizedMaxAzimuth {
+			return normalizedAzimuth >= normalizedMinAzimuth && normalizedAzimuth <= normalizedMaxAzimuth
+		}
+
+		return normalizedAzimuth >= normalizedMinAzimuth || normalizedAzimuth <= normalizedMaxAzimuth
+	}
+
+	private func normalizeAzimuth(_ azimuth: Double) -> Double {
+		let normalized = azimuth.truncatingRemainder(dividingBy: 360)
+		return normalized >= 0 ? normalized : normalized + 360
 	}
 
 	private func resolveStations(for target: WatchTarget) async throws -> [WatchStationSnapshot] {

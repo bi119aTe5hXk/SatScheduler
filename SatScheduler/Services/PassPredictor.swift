@@ -14,6 +14,7 @@ struct PassWindow: Identifiable, Hashable {
 	let maxElevation: Double
 	let azimuthStart: Double
 	let azimuthEnd: Double
+	let azimuthSamples: [Double]
 
 	var peakElevation: Double {
 		maxElevation
@@ -86,7 +87,7 @@ final class PassPredictor {
 		var activePass: ActivePass?
 
 		if previousSample.elevation >= minElevation {
-			activePass = ActivePass(start: previousSample, maxSample: previousSample)
+			activePass = ActivePass(start: previousSample, maxSample: previousSample, azimuthSamples: [previousSample.azimuth])
 		}
 
 		while currentDate < endDate {
@@ -104,10 +105,14 @@ final class PassPredictor {
 					to: nextSample,
 					minimumElevation: minElevation
 				)
-				activePass = ActivePass(start: aos, maxSample: nextSample)
+				activePass = ActivePass(start: aos, maxSample: nextSample, azimuthSamples: [aos.azimuth, nextSample.azimuth])
 			}
 
 			if var pass = activePass {
+				if nextSample.elevation >= minElevation {
+					pass.azimuthSamples.append(nextSample.azimuth)
+				}
+
 				if nextSample.elevation > pass.maxSample.elevation {
 					pass.maxSample = nextSample
 				}
@@ -123,12 +128,16 @@ final class PassPredictor {
 						minimumElevation: minElevation
 					)
 
+					var azimuthSamples = pass.azimuthSamples
+					azimuthSamples.append(los.azimuth)
+
 					let passWindow = PassWindow(
 						start: pass.start.date,
 						end: los.date,
 						maxElevation: pass.maxSample.elevation,
 						azimuthStart: pass.start.azimuth,
-						azimuthEnd: los.azimuth
+						azimuthEnd: los.azimuth,
+						azimuthSamples: azimuthSamples
 					)
 
 					if shouldIncludePass(
@@ -243,7 +252,7 @@ final class PassPredictor {
 		var activePass: ActivePass?
 
 		if previousSample.elevation >= minElevation {
-			activePass = ActivePass(start: previousSample, maxSample: previousSample)
+			activePass = ActivePass(start: previousSample, maxSample: previousSample, azimuthSamples: [previousSample.azimuth])
 		}
 
 		while currentDate < endDate {
@@ -261,10 +270,14 @@ final class PassPredictor {
 					to: nextSample,
 					minimumElevation: minElevation
 				)
-				activePass = ActivePass(start: aos, maxSample: nextSample)
+				activePass = ActivePass(start: aos, maxSample: nextSample, azimuthSamples: [aos.azimuth, nextSample.azimuth])
 			}
 
 			if var pass = activePass {
+				if nextSample.elevation >= minElevation {
+					pass.azimuthSamples.append(nextSample.azimuth)
+				}
+
 				if nextSample.elevation > pass.maxSample.elevation {
 					pass.maxSample = nextSample
 				}
@@ -280,12 +293,16 @@ final class PassPredictor {
 						minimumElevation: minElevation
 					)
 
+					var azimuthSamples = pass.azimuthSamples
+					azimuthSamples.append(los.azimuth)
+
 					let passWindow = PassWindow(
 						start: pass.start.date,
 						end: los.date,
 						maxElevation: pass.maxSample.elevation,
 						azimuthStart: pass.start.azimuth,
-						azimuthEnd: los.azimuth
+						azimuthEnd: los.azimuth,
+						azimuthSamples: azimuthSamples
 					)
 
 					if shouldIncludePass(
@@ -393,6 +410,7 @@ private struct PassSample: Hashable {
 private struct ActivePass {
 	let start: PassSample
 	var maxSample: PassSample
+	var azimuthSamples: [Double]
 }
 
 private extension Date {

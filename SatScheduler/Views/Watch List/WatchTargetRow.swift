@@ -41,6 +41,12 @@ struct WatchTargetRow: View {
 					.font(.caption)
 					.foregroundStyle(.secondary)
 			}
+
+			if let azimuthRangeText {
+				Label(azimuthRangeText, systemImage: "location.north.line")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
 		}
 		.padding(.vertical, 4)
 	}
@@ -71,5 +77,16 @@ struct WatchTargetRow: View {
 		case (nil, nil):
 			return nil
 		}
+	}
+
+	private var azimuthRangeText: String? {
+		guard let minAzimuth = target.minAzimuth,
+			  let maxAzimuth = target.maxAzimuth else {
+			return nil
+		}
+
+		let minText = String(format: "%.0f°", minAzimuth)
+		let maxText = String(format: "%.0f°", maxAzimuth)
+		return "Azimuth: \(minText) – \(maxText)"
 	}
 }

@@ -34,6 +34,9 @@ struct WatchTarget: Codable, Identifiable, Hashable {
 	
 	var minPeakElevation: Double? = nil
 	var maxPeakElevation: Double? = nil
+	
+	var minAzimuth: Double? = nil
+	var maxAzimuth: Double? = nil
 }
 
 struct WatchStationSnapshot: Codable, Hashable {
