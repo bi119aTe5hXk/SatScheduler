@@ -106,7 +106,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 
 		let summary = await scheduler.schedulePlanContinuingOnError(
 			plan,
-			delayBetweenRequests: 1,
+			delayBetweenRequests: 3,
 			onResult: { result in
 				self.updateExecutionResult(result)
 			},

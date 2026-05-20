@@ -225,7 +225,7 @@ final class AddWatchTargetViewModel: ObservableObject {
 		do {
 			let observations = try await networkService.fetchGoodObservations(
 				noradCatID: noradCatID,
-				maxPages: 3
+				maxPages: 2
 			)
 
 			guard !Task.isCancelled,
