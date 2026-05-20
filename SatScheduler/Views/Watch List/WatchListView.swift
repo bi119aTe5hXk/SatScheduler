@@ -4,6 +4,7 @@
 //
 //  Created by bi119aTe5hXk on 2026/05/16.
 //
+
 import SwiftUI
 
 struct WatchListView: View {
@@ -17,6 +18,7 @@ struct WatchListView: View {
 	@State private var isShowingAddTargetSheet = false
 	@State private var isShowingAutoSchedulePreview = false
 	@State private var predictionPreviewTarget: WatchTarget?
+	@State private var editingTarget: WatchTarget?
 
 	var body: some View {
 		NavigationStack {
@@ -39,6 +41,19 @@ struct WatchListView: View {
 											return
 										}
 										predictionPreviewTarget = target
+									}
+									.contextMenu {
+										Button {
+											editingTarget = target
+										} label: {
+											Label("Edit", systemImage: "pencil")
+										}
+
+										Button(role: .destructive) {
+											deleteTarget(target)
+										} label: {
+											Label("Delete", systemImage: "trash")
+										}
 									}
 
 								if isEditingWatchTargets {
@@ -67,9 +82,22 @@ struct WatchListView: View {
 								.onTapGesture(count: 1) {
 									predictionPreviewTarget = target
 								}
+								.swipeActions(edge: .trailing, allowsFullSwipe: false) {
+									Button(role: .destructive) {
+										deleteTarget(target)
+									} label: {
+										Label("Delete", systemImage: "trash")
+									}
+
+									Button {
+										editingTarget = target
+									} label: {
+										Label("Edit", systemImage: "pencil")
+									}
+									.tint(.blue)
+								}
 						#endif
 						}
-						.onDelete(perform: viewModel.deleteTargets)
 						.onMove(perform: viewModel.moveTargets)
 					}
 					.refreshable {
@@ -116,9 +144,16 @@ struct WatchListView: View {
 				}
 			}
 			.sheet(isPresented: $isShowingAddTargetSheet) {
-				AddWatchTargetView { target in
+				WatchTargetEditorView { target in
 					viewModel.addTarget(target)
 					isShowingAddTargetSheet = false
+				}
+				.adaptiveWatchSheetSizing()
+			}
+			.sheet(item: $editingTarget) { target in
+				WatchTargetEditorView(editingTarget: target) { updatedTarget in
+					viewModel.updateTarget(updatedTarget)
+					editingTarget = nil
 				}
 				.adaptiveWatchSheetSizing()
 			}
@@ -139,6 +174,14 @@ struct WatchListView: View {
 				viewModel.loadWatchTargets()
 			}
 		}
+	}
+
+	private func deleteTarget(_ target: WatchTarget) {
+		guard let index = viewModel.watchTargets.firstIndex(where: { $0.id == target.id }) else {
+			return
+		}
+
+		viewModel.deleteTargets(at: IndexSet(integer: index))
 	}
 
 #if os(iOS)

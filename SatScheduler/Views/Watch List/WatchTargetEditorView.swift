@@ -1,5 +1,5 @@
 //
-//  AddWatchTargetView.swift
+//  WatchTargetEditorView.swift
 //  SatScheduler
 //
 //  Created by bi119aTe5hXk on 2026/05/16.
@@ -7,80 +7,111 @@
 
 import SwiftUI
 
-struct AddWatchTargetView: View {
+struct WatchTargetEditorView: View {
 	@Environment(\.dismiss) private var dismiss
 
+	let editingTarget: WatchTarget?
 	let onSave: (WatchTarget) -> Void
 
-	@StateObject var viewModel = AddWatchTargetViewModel()
-	@State private var requireStationDaylight = false
-	@State private var minPeakElevationText = ""
-	@State private var maxPeakElevationText = ""
-	@State private var minAzimuthText = ""
-	@State private var maxAzimuthText = ""
+	@StateObject var viewModel: WatchTargetEditorViewModel
+	@State private var requireStationDaylight: Bool
+	@State private var minPeakElevationText: String
+	@State private var maxPeakElevationText: String
+	@State private var minAzimuthText: String
+	@State private var maxAzimuthText: String
+
+	init(
+		editingTarget: WatchTarget? = nil,
+		onSave: @escaping (WatchTarget) -> Void
+	) {
+		self.editingTarget = editingTarget
+		self.onSave = onSave
+		_viewModel = StateObject(wrappedValue: WatchTargetEditorViewModel(editingTarget: editingTarget))
+		_requireStationDaylight = State(initialValue: editingTarget?.requiresStationDaylight ?? false)
+		_minPeakElevationText = State(initialValue: Self.textValue(for: editingTarget?.minPeakElevation))
+		_maxPeakElevationText = State(initialValue: Self.textValue(for: editingTarget?.maxPeakElevation))
+		_minAzimuthText = State(initialValue: Self.textValue(for: editingTarget?.minAzimuth))
+		_maxAzimuthText = State(initialValue: Self.textValue(for: editingTarget?.maxAzimuth))
+	}
 
 	var body: some View {
 		NavigationStack {
 			List {
 				Section("Satellite") {
-					TextField("Search satellites", text: $viewModel.satelliteSearchText)
-						.textFieldStyle(.roundedBorder)
+					if let editingTarget {
+						VStack(alignment: .leading, spacing: 6) {
+							Text(editingTarget.satelliteName ?? editingTarget.name)
+								.font(.headline)
 
-					if let selectedSatelliteID = viewModel.selectedSatelliteID,
-					   let selectedSatellite = viewModel.satellites.first(where: { $0.id == selectedSatelliteID }) {
-						HStack {
-							Text("Selected: \(viewModel.displayName(for: selectedSatellite))")
+							Text("Satellite ID: \(editingTarget.satelliteID)")
+								.font(.caption)
 								.foregroundStyle(.secondary)
+						}
+						.padding(.vertical, 4)
 
-							Spacer()
+						Text("Satellite cannot be changed while editing. Create a new watch target to use another satellite.")
+							.font(.caption)
+							.foregroundStyle(.secondary)
+					} else {
+						TextField("Search satellites", text: $viewModel.satelliteSearchText)
+							.textFieldStyle(.roundedBorder)
 
-							Button("Clear") {
-								viewModel.selectedSatelliteID = nil
-								viewModel.selectedTransmitterID = nil
-								viewModel.centerFrequencyMHzText = ""
-								viewModel.transmitters = []
+						if let selectedSatelliteID = viewModel.selectedSatelliteID,
+						   let selectedSatellite = viewModel.satellites.first(where: { $0.id == selectedSatelliteID }) {
+							HStack {
+								Text("Selected: \(viewModel.displayName(for: selectedSatellite))")
+									.foregroundStyle(.secondary)
+
+								Spacer()
+
+								Button("Clear") {
+									viewModel.selectedSatelliteID = nil
+									viewModel.selectedTransmitterID = nil
+									viewModel.centerFrequencyMHzText = ""
+									viewModel.transmitters = []
+								}
 							}
 						}
-					}
 
-					if viewModel.isLoadingSatellites {
-						ProgressView()
-					} else {
-						if viewModel.filteredSatellites.isEmpty && !viewModel.satelliteSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-							Text("No satellites found.")
-								.foregroundStyle(.secondary)
-								.frame(maxWidth: .infinity, alignment: .center)
-								.padding(.vertical, 24)
+						if viewModel.isLoadingSatellites {
+							ProgressView()
 						} else {
-							ForEach(Array(viewModel.filteredSatellites.prefix(100))) { satellite in
-								Button {
-									viewModel.selectedSatelliteID = satellite.id
-									viewModel.satelliteSearchText = viewModel.displayName(for: satellite)
+							if viewModel.filteredSatellites.isEmpty && !viewModel.satelliteSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+								Text("No satellites found.")
+									.foregroundStyle(.secondary)
+									.frame(maxWidth: .infinity, alignment: .center)
+									.padding(.vertical, 24)
+							} else {
+								ForEach(Array(viewModel.filteredSatellites.prefix(100))) { satellite in
+									Button {
+										viewModel.selectedSatelliteID = satellite.id
+										viewModel.satelliteSearchText = viewModel.displayName(for: satellite)
 
-									Task {
-										await viewModel.loadTransmitters(for: satellite.id)
-									}
-								} label: {
-									HStack {
-										VStack(alignment: .leading, spacing: 4) {
-											Text(viewModel.displayName(for: satellite))
+										Task {
+											await viewModel.loadTransmitters(for: satellite.id)
+										}
+									} label: {
+										HStack {
+											VStack(alignment: .leading, spacing: 4) {
+												Text(viewModel.displayName(for: satellite))
 
-											if let norad = satellite.norad_cat_id {
-												Text("NORAD: \(norad) / \(satellite.countries ?? "-")")
-													.font(.caption)
-													.foregroundStyle(.secondary)
+												if let norad = satellite.norad_cat_id {
+													Text("NORAD: \(norad) / \(satellite.countries ?? "-")")
+														.font(.caption)
+														.foregroundStyle(.secondary)
+												}
+											}
+
+											Spacer()
+
+											if viewModel.selectedSatelliteID == satellite.id {
+												Image(systemName: "checkmark")
+													.foregroundStyle(.blue)
 											}
 										}
-
-										Spacer()
-
-										if viewModel.selectedSatelliteID == satellite.id {
-											Image(systemName: "checkmark")
-												.foregroundStyle(.blue)
-										}
 									}
+									.buttonStyle(.plain)
 								}
-								.buttonStyle(.plain)
 							}
 						}
 					}
@@ -277,7 +308,7 @@ struct AddWatchTargetView: View {
 					}
 				}
 			}
-			.navigationTitle("Add Watch Target")
+			.navigationTitle(editingTarget == nil ? "Add Watch Target" : "Edit Watch Target")
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) {
 					Button("Cancel") {
@@ -286,8 +317,13 @@ struct AddWatchTargetView: View {
 				}
 
 				ToolbarItem(placement: .confirmationAction) {
-					Button("Add") {
+					Button(editingTarget == nil ? "Add" : "Save") {
 						if var target = viewModel.makeWatchTarget() {
+							if let editingTarget {
+								target.id = editingTarget.id
+//								target.createdAt = editingTarget.createdAt
+							}
+
 							target.requireStationDaylight = requireStationDaylight ? true : nil
 							target.minPeakElevation = parsedMinPeakElevation
 							target.maxPeakElevation = parsedMaxPeakElevation
@@ -301,9 +337,18 @@ struct AddWatchTargetView: View {
 			}
 			.task {
 				await viewModel.loadInitialData()
+				await viewModel.prepareForEditingIfNeeded()
 			}
 		}
 //		.frame(minWidth: 620, minHeight: 640)
+	}
+
+	private static func textValue(for value: Double?) -> String {
+		guard let value else {
+			return ""
+		}
+
+		return String(format: "%g", value)
 	}
 
 	private var selectedTransmitterText: String {

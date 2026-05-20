@@ -1,5 +1,5 @@
 //
-//  AddWatchTargetViewModel.swift
+//  WatchTargetEditorViewModel.swift
 //  SatScheduler
 //
 //  Created by bi119aTe5hXk on 2026/05/16.
@@ -9,7 +9,7 @@ import Combine
 
 
 @MainActor
-final class AddWatchTargetViewModel: ObservableObject {
+final class WatchTargetEditorViewModel: ObservableObject {
 	@Published var satellites: [SatelliteModel] = []
 	@Published var transmitters: [Transmitter] = []
 	@Published var stations: [GroundStation] = []
@@ -33,6 +33,21 @@ final class AddWatchTargetViewModel: ObservableObject {
 	private let dbService = SatNOGSDBService()
 	private let networkService = SatNOGSNetworkService()
 	private var recommendationTask: Task<Void, Never>?
+
+	private let editingTarget: WatchTarget?
+	private var didPrepareEditingTarget = false
+
+	init(editingTarget: WatchTarget? = nil) {
+		self.editingTarget = editingTarget
+
+		if let editingTarget {
+			selectedSatelliteID = editingTarget.satelliteID
+			selectedTransmitterID = editingTarget.transmitterID
+			selectedStationIDs = Set(editingTarget.stationIDs)
+			centerFrequencyMHzText = Self.frequencyMHzText(from: editingTarget.centerFrequency)
+			satelliteSearchText = editingTarget.satelliteName ?? editingTarget.name
+		}
+	}
 
 	var filteredSatellites: [SatelliteModel] {
 
@@ -141,10 +156,30 @@ final class AddWatchTargetViewModel: ObservableObject {
 	}
 
 	func loadInitialData() async {
-		async let satelliteTask: Void = loadSatellites()
-		async let stationTask: Void = loadStations()
+		if editingTarget == nil {
+			async let satelliteTask: Void = loadSatellites()
+			async let stationTask: Void = loadStations()
 
-		_ = await (satelliteTask, stationTask)
+			_ = await (satelliteTask, stationTask)
+		} else {
+			await loadStations()
+		}
+	}
+
+	func prepareForEditingIfNeeded() async {
+		guard !didPrepareEditingTarget, let editingTarget else {
+			return
+		}
+
+		didPrepareEditingTarget = true
+		selectedSatelliteID = editingTarget.satelliteID
+		selectedTransmitterID = editingTarget.transmitterID
+		selectedStationIDs = Set(editingTarget.stationIDs)
+		centerFrequencyMHzText = Self.frequencyMHzText(from: editingTarget.centerFrequency)
+
+		satelliteSearchText = editingTarget.satelliteName ?? editingTarget.name
+
+		await loadTransmittersForEditing(satelliteID: editingTarget.satelliteID)
 	}
 
 	func loadSatellites() async {
@@ -195,6 +230,37 @@ final class AddWatchTargetViewModel: ObservableObject {
 			transmitters = []
 			selectedTransmitterID = nil
 			centerFrequencyMHzText = ""
+		}
+	}
+
+	private func loadTransmittersForEditing(satelliteID: String) async {
+		recommendationTask?.cancel()
+		recommendedTransmitterID = nil
+		recommendedTransmitterObservationCount = 0
+		isLoadingRecommendedTransmitter = false
+
+		isLoadingTransmitters = true
+		defer { isLoadingTransmitters = false }
+
+		do {
+			transmitters = try await dbService.fetchTransmitters(satelliteID: satelliteID)
+
+			if let editingTarget,
+			   transmitters.contains(where: { $0.id == editingTarget.transmitterID }) {
+				selectedTransmitterID = editingTarget.transmitterID
+			} else if selectedTransmitterID == nil {
+				selectedTransmitterID = nil
+			}
+
+			if centerFrequencyMHzText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+			   let editingTarget {
+				centerFrequencyMHzText = Self.frequencyMHzText(from: editingTarget.centerFrequency)
+			}
+
+			startRecommendedTransmitterLoad(for: satelliteID)
+		} catch {
+			errorMessage = error.localizedDescription
+			transmitters = []
 		}
 	}
 
@@ -331,6 +397,15 @@ final class AddWatchTargetViewModel: ObservableObject {
 			minElevation: nil,
 			enabled: true
 		)
+	}
+
+	private static func frequencyMHzText(from frequencyHz: Int?) -> String {
+		guard let frequencyHz, frequencyHz > 0 else {
+			return ""
+		}
+
+		let mhz = Double(frequencyHz) / 1_000_000
+		return String(format: "%g", mhz)
 	}
 
 	func displayName(for satellite: SatelliteModel) -> String {

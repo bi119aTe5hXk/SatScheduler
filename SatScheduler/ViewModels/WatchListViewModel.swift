@@ -38,6 +38,15 @@ final class WatchListViewModel: ObservableObject {
 		saveWatchTargets()
 	}
 
+	func updateTarget(_ updatedTarget: WatchTarget) {
+		guard let index = watchTargets.firstIndex(where: { $0.id == updatedTarget.id }) else {
+			return
+		}
+
+		watchTargets[index] = updatedTarget
+		saveWatchTargets()
+	}
+
 	func deleteTargets(at offsets: IndexSet) {
 		watchTargets.remove(atOffsets: offsets)
 		saveWatchTargets()

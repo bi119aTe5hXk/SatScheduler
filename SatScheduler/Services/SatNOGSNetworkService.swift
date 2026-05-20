@@ -9,7 +9,6 @@
 import Foundation
 
 struct ObservationScheduleRequest: Encodable, Hashable {
-
 	let groundStationID: Int
 	let transmitterUUID: String
 	let start: Date
@@ -27,8 +26,6 @@ struct ObservationScheduleRequest: Encodable, Hashable {
 		try container.encode(SatNOGSNetworkService.observationDateFormatter.string(from: start), forKey: .start)
 		try container.encode(SatNOGSNetworkService.observationDateFormatter.string(from: end), forKey: .end)
 	}
-
-
 }
 
 extension ObservationScheduleRequest {
@@ -163,7 +160,7 @@ final class SatNOGSNetworkService {
 
 		var observations: [Observation] = []
 
-		for groundStationID in groundStationIDs {
+		for (index, groundStationID) in groundStationIDs.enumerated() {
 			let stationItems: [URLQueryItem] = [
 				URLQueryItem(name: "status", value: "future"),
 				URLQueryItem(name: "ground_station", value: String(groundStationID))
@@ -176,6 +173,10 @@ final class SatNOGSNetworkService {
 
 			observations.append(contentsOf: stationObservations)
 			print("Fetched \(stationObservations.count) future observation(s) for station \(groundStationID)")
+
+			if index < groundStationIDs.count - 1 {
+				try? await Task.sleep(nanoseconds: 1_000_000_000)
+			}
 		}
 
 		return observations
