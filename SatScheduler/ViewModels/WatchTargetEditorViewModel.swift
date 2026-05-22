@@ -224,7 +224,13 @@ final class WatchTargetEditorViewModel: ObservableObject {
 			transmitters = try await dbService.fetchTransmitters(satelliteID: satelliteID)
 			selectedTransmitterID = nil
 			centerFrequencyMHzText = ""
-			startRecommendedTransmitterLoad(for: satelliteID)
+
+			if transmitters.count == 1, let onlyTransmitter = transmitters.first {
+				recommendedTransmitterID = onlyTransmitter.id
+				recommendedTransmitterObservationCount = 0
+			} else if transmitters.count > 1 {
+				startRecommendedTransmitterLoad(for: satelliteID)
+			}
 		} catch {
 			errorMessage = error.localizedDescription
 			transmitters = []
@@ -257,7 +263,12 @@ final class WatchTargetEditorViewModel: ObservableObject {
 				centerFrequencyMHzText = Self.frequencyMHzText(from: editingTarget.centerFrequency)
 			}
 
-			startRecommendedTransmitterLoad(for: satelliteID)
+			if transmitters.count == 1, let onlyTransmitter = transmitters.first {
+				recommendedTransmitterID = onlyTransmitter.id
+				recommendedTransmitterObservationCount = 0
+			} else if transmitters.count > 1 {
+				startRecommendedTransmitterLoad(for: satelliteID)
+			}
 		} catch {
 			errorMessage = error.localizedDescription
 			transmitters = []
