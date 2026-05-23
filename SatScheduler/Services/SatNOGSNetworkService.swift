@@ -99,6 +99,20 @@ final class SatNOGSNetworkService {
 			logPrefix: "unknown observations for observer \(observerID)"
 		)
 	}
+
+	func fetchUnknownObservationsPage(
+		observerID: Int,
+		cursor: String? = nil
+	) async throws -> ObservationPage {
+		try await fetchObservationPage(
+			queryItems: [
+				URLQueryItem(name: "status", value: "unknown"),
+				URLQueryItem(name: "observer", value: String(observerID))
+			],
+			cursor: cursor,
+			logPrefix: "unknown observations for observer \(observerID)"
+		)
+	}
 	
 	func fetchGoodObservations(
 		noradCatID: Int,
@@ -180,6 +194,32 @@ final class SatNOGSNetworkService {
 		}
 
 		return observations
+	}
+
+	private func fetchObservationPage(
+		queryItems: [URLQueryItem],
+		cursor: String?,
+		logPrefix: String
+	) async throws -> ObservationPage {
+		var pageItems = queryItems
+		if let cursor {
+			pageItems.append(URLQueryItem(name: "cursor", value: cursor))
+		}
+
+		let response: ObservationListResponse = try await client.get(
+			host: .networkAPI,
+			path: "observations/",
+			queryItems: pageItems,
+			requiresToken: false
+		)
+
+		let resolvedNextCursor = response.nextCursor ?? Self.fallbackNextCursor(from: response.results)
+		print("Fetched page for \(logPrefix): \(response.results.count) observation(s), nextCursor: \(resolvedNextCursor ?? "nil")")
+
+		return ObservationPage(
+			results: response.results,
+			nextCursor: resolvedNextCursor
+		)
 	}
 
 	private func fetchAllObservationPages(
@@ -332,6 +372,11 @@ final class SatNOGSNetworkService {
 		return observations
 	}
 	
+	struct ObservationPage {
+		let results: [Observation]
+		let nextCursor: String?
+	}
+
 	private struct ObservationListResponse: Decodable {
 		let results: [Observation]
 		let nextCursor: String?

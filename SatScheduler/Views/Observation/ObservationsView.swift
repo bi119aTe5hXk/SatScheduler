@@ -115,11 +115,27 @@ struct ObservationsView: View {
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
-			List(viewModel.observations) { observation in
-				NavigationLink {
-					ObservationDetailView(observation: observation)
-				} label: {
-					ObservationRowView(observation: observation)
+			List {
+				ForEach(viewModel.observations) { observation in
+					NavigationLink {
+						ObservationDetailView(observation: observation)
+					} label: {
+						ObservationRowView(observation: observation)
+					}
+					.task {
+						await viewModel.loadMoreUnknownObservationsIfNeeded(
+							currentObservation: observation,
+							observerID: observerID
+						)
+					}
+				}
+
+				if viewModel.isLoadingNextPage {
+					HStack {
+						Spacer()
+						ProgressView()
+						Spacer()
+					}
 				}
 			}
 			.refreshable {
@@ -142,10 +158,11 @@ struct ObservationsView: View {
 	}
 	
 	private var observationsTitle: String {
-		if viewModel.isLoading {
-			return "Observations"
-		}
-
-		return "Observations (\(viewModel.observations.count))"
+		return "Observations"
+//		if viewModel.isLoading {
+//			return "Observations"
+//		}
+//
+//		return "Observations (\(viewModel.observations.count))"
 	}
 }
