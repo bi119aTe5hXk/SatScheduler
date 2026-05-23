@@ -128,21 +128,33 @@ struct AutoSchedulePreviewView: View {
 							)
 						} else {
 							ForEach(plan.selectedCandidates) { candidate in
-								AutoScheduleCandidateRow(
-									candidate: candidate,
-									executionResult: viewModel.executionResult(for: candidate)
-								)
-								.swipeActions(edge: .trailing, allowsFullSwipe: true) {
-									Button(role: .destructive) {
-										viewModel.removeSelectedCandidate(candidate)
-									} label: {
-										Label("Remove", systemImage: "trash")
+								if viewModel.isScheduling {
+									AutoScheduleCandidateRow(
+										candidate: candidate,
+										executionResult: viewModel.executionResult(for: candidate)
+									)
+									.moveDisabled(true)
+									.disabled(true)
+								} else {
+									AutoScheduleCandidateRow(
+										candidate: candidate,
+										executionResult: viewModel.executionResult(for: candidate)
+									)
+									.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+										Button(role: .destructive) {
+											viewModel.removeSelectedCandidate(candidate)
+										} label: {
+											Label("Remove", systemImage: "trash")
+										}
 									}
+									.moveDisabled(false)
 								}
-								.moveDisabled(viewModel.isScheduling)
-								.disabled(viewModel.isScheduling)
 							}
 							.onMove { source, destination in
+								guard !viewModel.isScheduling else {
+									return
+								}
+
 								viewModel.moveSelectedCandidates(fromOffsets: source, toOffset: destination)
 							}
 						}
