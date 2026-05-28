@@ -7,6 +7,7 @@ import SwiftUI
 
 struct WatchTargetPredictionPreviewView: View {
 	@Environment(\.dismiss) private var dismiss
+	@EnvironmentObject private var authManager: AuthManager
 
 	let target: WatchTarget
 
@@ -218,6 +219,11 @@ struct WatchTargetPredictionPreviewView: View {
 	@MainActor
 	private func schedulePredictedObservations() async {
 		guard !isScheduling else {
+			return
+		}
+
+		guard authManager.isLoggedIn else {
+			authManager.requireLoginPrompt()
 			return
 		}
 
