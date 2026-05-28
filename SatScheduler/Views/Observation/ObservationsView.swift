@@ -49,7 +49,7 @@ struct ObservationsView: View {
 #if os(iOS)
 									.keyboardType(.numberPad)
 #endif
-								Text("Used for /api/observations/?status=unknown&observer=<id>.")
+								Text("To find your Observer ID, open SatNOGS Network in a browser and check the message in the top-right corner, such as ‘<number> observations needs rating.’ For your own account, the page URL usually includes observer=XXXX. To find another user’s ID, select that username in the Observer filter, click Search, then check observer=XXXX in the updated URL.")
 									.font(.caption)
 									.foregroundStyle(.secondary)
 							}
