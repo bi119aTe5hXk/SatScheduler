@@ -11,7 +11,7 @@ Written in SwiftUI.
 [https://testflight.apple.com/join/pp2QjBvV](https://testflight.apple.com/join/pp2QjBvV)
 
 ## Screenshots
-<img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 12" src="https://github.com/user-attachments/assets/36e1c794-2b2d-4d55-bb70-2d5cfe633d82" /> <img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 01" src="https://github.com/user-attachments/assets/8df87d02-7842-48b9-bdef-d27ae57978d3" /> <img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 35" src="https://github.com/user-attachments/assets/ea059403-5a10-4450-8125-f58e0d52959e" />
+<img width="200" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 12" src="https://github.com/user-attachments/assets/36e1c794-2b2d-4d55-bb70-2d5cfe633d82" /> <img width="200" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 01" src="https://github.com/user-attachments/assets/8df87d02-7842-48b9-bdef-d27ae57978d3" /> <img width="200" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 35" src="https://github.com/user-attachments/assets/ea059403-5a10-4450-8125-f58e0d52959e" />
 
 
 
