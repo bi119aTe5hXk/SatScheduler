@@ -10,6 +10,7 @@ import Combine
 @MainActor
 final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 	@Published var isLoading = false
+	@Published var loadingStatusText = ""
 	@Published var errorMessage: String?
 	@Published var stationTimelines: [StationPassTimeline] = []
 	@Published var conflictSummary: PredictionConflictSummary?
@@ -22,15 +23,18 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 
 	func loadPrediction(for target: WatchTarget) async {
 		isLoading = true
+		loadingStatusText = "Preparing prediction calculation..."
 		errorMessage = nil
 		stationTimelines = []
 		conflictSummary = nil
 
 		defer {
 			isLoading = false
+			loadingStatusText = ""
 		}
 
 		do {
+			loadingStatusText = "Fetching TLE data from local cache or SatNOGS DB..."
 			guard let tle = try await TLECacheStore.shared.fetchLatestTLE(satelliteID: target.satelliteID) else {
 				errorMessage = "TLE not found for satellite \(target.satelliteID)."
 				return
@@ -39,8 +43,11 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			let stationSnapshots = target.stationSnapshots ?? [:]
 
 			var timelines: [StationPassTimeline] = []
+			loadingStatusText = "Calculating satellite pass windows from TLE data..."
 
 			for stationID in target.stationIDs {
+				let stationName = stationSnapshots[stationID]?.name ?? "Station \(stationID)"
+				loadingStatusText = "Calculating pass windows for \(stationName)..."
 				guard let station = stationSnapshots[stationID] else {
 					continue
 				}
@@ -87,6 +94,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			print("Target satelliteID:", target.satelliteID)
 			print("TransmitterID:", target.transmitterID)
 			
+			loadingStatusText = "Building observation requests from predicted windows..."
 			let requests = predictedTimelines.flatMap { stationTimeline in
 				stationTimeline.passes.map { passWindow in
 					ObservationScheduleRequest(
@@ -102,13 +110,37 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			let requestStart = requests.map(\.start).min() ?? startDate
 			let requestEnd = requests.map(\.end).max() ?? endDate
 
-			let existingObservations = try await SatNOGSNetworkService().fetchScheduledObservations(
-				start: requestStart,
-				end: requestEnd,
-				groundStationIDs: stationIDs
+			loadingStatusText = "Fetching scheduled observations for selected ground stations..."
+			let stationNameByID = Dictionary(
+				uniqueKeysWithValues: predictedTimelines.map { timeline in
+					(timeline.stationID, timeline.stationName)
+				}
 			)
-			StationScheduleStore.shared.replaceSchedule(with: existingObservations)
+			var existingObservations: [Observation] = []
+			let networkService = SatNOGSNetworkService()
 
+			for (index, stationID) in stationIDs.enumerated() {
+				let stationName = stationNameByID[stationID] ?? "Station \(stationID)"
+				loadingStatusText = "Fetching scheduled observations for \(stationName)..."
+
+				let stationObservations = try await networkService.fetchScheduledObservations(
+					start: requestStart,
+					end: requestEnd,
+					groundStationIDs: [stationID]
+				)
+				existingObservations.append(contentsOf: stationObservations)
+
+				StationScheduleStore.shared.replaceSchedule(
+					with: stationObservations,
+					groundStationIDs: [stationID]
+				)
+
+				if index < stationIDs.count - 1 {
+					try? await Task.sleep(nanoseconds: 1_000_000_000)
+				}
+			}
+
+			loadingStatusText = "Filtering conflicts with existing observations..."
 			let conflictResult = ObservationScheduleConflictResolver.filterConflicts(
 				requests: requests,
 				existingObservations: existingObservations,
@@ -123,6 +155,7 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 
 			let allowedPassKeys = Set(conflictResult.allowedRequests.map(Self.passKey))
 
+			loadingStatusText = "Finalizing prediction timeline..."
 			stationTimelines = predictedTimelines.compactMap { stationTimeline in
 				let filteredPasses = stationTimeline.passes.filter { passWindow in
 					allowedPassKeys.contains(Self.passKey(
