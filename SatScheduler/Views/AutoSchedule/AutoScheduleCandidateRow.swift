@@ -91,7 +91,7 @@ struct AutoScheduleCandidateRow: View {
 		case .running:
 			return "Scheduling..."
 		case .success(let createdCount):
-			return "Created \(createdCount)"
+			return "Scheduled"
 		case .failure(let message):
 			return "Failed: \(message)"
 		}

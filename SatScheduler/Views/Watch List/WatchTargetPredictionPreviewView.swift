@@ -138,7 +138,7 @@ struct WatchTargetPredictionPreviewView: View {
 		if viewModel.isLoading {
 			HStack {
 				ProgressView()
-				Text("Calculating prediction windows...")
+				Text(viewModel.loadingStatusText.isEmpty ? "Calculating prediction windows..." : viewModel.loadingStatusText)
 					.foregroundStyle(.secondary)
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)

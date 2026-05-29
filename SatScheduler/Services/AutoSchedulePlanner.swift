@@ -16,13 +16,20 @@ final class AutoSchedulePlanner {
 		targets: [WatchTarget],
 		start: Date,
 		end: Date,
-		priorityMode: AutoSchedulePriorityMode
+		priorityMode: AutoSchedulePriorityMode,
+		onProgress: ((AutoSchedulePlanningStatus) async -> Void)? = nil
 	) async throws -> AutoSchedulePlan {
 		var candidates: [AutoScheduleCandidate] = []
+		await onProgress?(AutoSchedulePlanningStatus(message: "Preparing watch targets..."))
 		let enabledTargets = targets.filter { $0.enabled }
+
+		await onProgress?(AutoSchedulePlanningStatus(message: "Fetching TLE data from local cache or SatNOGS DB..."))
 		let tleBySatelliteID = try await fetchTLEs(for: enabledTargets)
 
+		await onProgress?(AutoSchedulePlanningStatus(message: "Predicting satellite pass windows from TLE data..."))
 		for (targetIndex, target) in enabledTargets.enumerated() {
+			await onProgress?(AutoSchedulePlanningStatus(message: "Predicting pass windows for \(target.name)..."))
+
 			guard let tle = tleBySatelliteID[target.satelliteID] else {
 				continue
 			}
@@ -30,6 +37,7 @@ final class AutoSchedulePlanner {
 			let stations = try await resolveStations(for: target)
 
 			for station in stations {
+				await onProgress?(AutoSchedulePlanningStatus(message: "Predicting pass windows for \(target.name) at \(station.name)..."))
 				let targetCandidates = try makeCandidates(
 					target: target,
 					targetIndex: targetIndex,
@@ -42,17 +50,22 @@ final class AutoSchedulePlanner {
 			}
 		}
 
+		await onProgress?(AutoSchedulePlanningStatus(message: "Sorting predicted pass windows..."))
 		let sortedCandidates = AutoSchedulePlanner.sortCandidates(candidates, priorityMode: priorityMode)
+		await onProgress?(AutoSchedulePlanningStatus(message: "Fetching scheduled observations for selected ground stations..."))
 		let existingObservations = try await fetchExistingObservations(
 			for: sortedCandidates,
 			start: start,
-			end: end
+			end: end,
+			onProgress: onProgress
 		)
+		await onProgress?(AutoSchedulePlanningStatus(message: "Filtering conflicts with existing and selected observations..."))
 		let selection = AutoSchedulePlanner.selectNonConflictingCandidates(
 			sortedCandidates,
 			existingObservations: existingObservations
 		)
 
+		await onProgress?(AutoSchedulePlanningStatus(message: "Finalizing auto schedule plan..."))
 		return AutoSchedulePlan(
 			createdAt: Date(),
 			start: start,
@@ -233,19 +246,45 @@ final class AutoSchedulePlanner {
 	private func fetchExistingObservations(
 		for candidates: [AutoScheduleCandidate],
 		start: Date,
-		end: Date
+		end: Date,
+		onProgress: ((AutoSchedulePlanningStatus) async -> Void)? = nil
 	) async throws -> [Observation] {
-		let stationIDs = Array(Set(candidates.map { $0.request.groundStationID })).sorted()
+		let stationNameByID = candidates.reduce(into: [Int: String]()) { result, candidate in
+			let stationID = candidate.request.groundStationID
+			guard result[stationID] == nil else {
+				return
+			}
+
+			result[stationID] = candidate.stationName
+		}
+		let stationIDs = Array(stationNameByID.keys).sorted()
 		guard !stationIDs.isEmpty else {
 			return []
 		}
 
-		let observations = try await networkService.fetchScheduledObservations(
-			start: start,
-			end: end,
-			groundStationIDs: stationIDs
-		)
-		StationScheduleStore.shared.replaceSchedule(with: observations)
+		var observations: [Observation] = []
+
+		for (index, stationID) in stationIDs.enumerated() {
+			let stationName = stationNameByID[stationID] ?? "Station \(stationID)"
+			await onProgress?(AutoSchedulePlanningStatus(message: "Fetching scheduled observations for \(stationName)..."))
+
+			let stationObservations = try await networkService.fetchScheduledObservations(
+				start: start,
+				end: end,
+				groundStationIDs: [stationID]
+			)
+			observations.append(contentsOf: stationObservations)
+
+			StationScheduleStore.shared.replaceSchedule(
+				with: stationObservations,
+				groundStationIDs: [stationID]
+			)
+
+			if index < stationIDs.count - 1 {
+				try? await Task.sleep(nanoseconds: 1_000_000_000)
+			}
+		}
+
 		return observations
 	}
 

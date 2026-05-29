@@ -14,6 +14,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var plan: AutoSchedulePlan?
 	@Published var createdObservations: [Observation] = []
 	@Published var isPlanning = false
+	@Published var planningStatusText = ""
 	@Published var isScheduling = false
 	@Published var scheduleProgress: (created: Int, total: Int) = (0, 0)
 	@Published var executionResults: [AutoScheduleExecutionResult] = []
@@ -65,8 +66,10 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 
 		isPlanning = true
+		planningStatusText = "Preparing auto schedule plan..."
 		defer {
 			isPlanning = false
+			planningStatusText = ""
 		}
 
 		do {
@@ -79,7 +82,12 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 					targets: targets,
 					start: start,
 					end: end,
-					priorityMode: priorityMode
+					priorityMode: priorityMode,
+					onProgress: { status in
+						await MainActor.run {
+							self.planningStatusText = status.message
+						}
+					}
 				)
 			}
 

@@ -80,8 +80,14 @@ struct AutoSchedulePreviewView: View {
 	@ViewBuilder
 	private var contentView: some View {
 		if viewModel.isPlanning && viewModel.plan == nil {
-			ProgressView("Calculating schedule plan...")
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
+			VStack(spacing: 12) {
+				ProgressView()
+				Text(viewModel.planningStatusText.isEmpty ? "Calculating schedule plan..." : viewModel.planningStatusText)
+					.font(.headline)
+					.multilineTextAlignment(.center)
+					.padding(.horizontal)
+			}
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
 			List {
 				Section("Priority") {

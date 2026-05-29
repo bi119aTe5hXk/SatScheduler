@@ -177,3 +177,7 @@ struct AutoScheduleExecutionSummary {
 		}
 	}
 }
+
+struct AutoSchedulePlanningStatus: Equatable {
+	let message: String
+}

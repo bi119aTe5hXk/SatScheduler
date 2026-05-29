@@ -134,7 +134,7 @@ struct StationScheduleTimelineView: View {
 			.stationScheduleSheetSizing()
 		}
 		.onAppear {
-			currentDate = Date()
+			resetTimelineToNow()
 		}
 		.onReceive(currentTimeTimer) { date in
 			currentDate = date
@@ -142,6 +142,12 @@ struct StationScheduleTimelineView: View {
 				timelineStartDate = date
 			}
 		}
+	}
+	
+	private func resetTimelineToNow() {
+		let now = Date()
+		currentDate = now
+		timelineStartDate = now
 	}
 
 	private var timelineHeader: some View {
