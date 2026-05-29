@@ -9,3 +9,16 @@ Written in SwiftUI.
 ## Testflight
 
 [https://testflight.apple.com/join/pp2QjBvV](https://testflight.apple.com/join/pp2QjBvV)
+
+## Screenshots
+<img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 12" src="https://github.com/user-attachments/assets/36e1c794-2b2d-4d55-bb70-2d5cfe633d82" /> <img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 01" src="https://github.com/user-attachments/assets/8df87d02-7842-48b9-bdef-d27ae57978d3" /> <img width="300" alt="Simulator Screenshot - iPhone 17 - 2026-05-28 at 23 03 35" src="https://github.com/user-attachments/assets/ea059403-5a10-4450-8125-f58e0d52959e" />
+
+
+
+## How to use
+1. Save your API token.
+2. Tap the + button in the Watch List to open the Add Watch Target sheet.
+3. Select a satellite, then choose a transmitter and one or more stations.
+4. Tap Add to save the watch target.
+5. Tap a single satellite to predict observation windows once, or tap the sync button to start automatic scheduling.
+6. When prediction is complete, review it, then tap Schedule Predicted Window or Schedule Selected Passes to submit observation schedules.
