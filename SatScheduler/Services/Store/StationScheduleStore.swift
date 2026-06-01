@@ -11,21 +11,35 @@ final class StationScheduleStore {
 
 	private let cacheKey = "SatScheduler.stationScheduleCache"
 	private let networkService = SatNOGSNetworkService()
+	private let ubiquitousStore = NSUbiquitousKeyValueStore.default
 
-	private init() {}
+	private init() {
+		ubiquitousStore.synchronize()
+	}
 
 	func loadCachedSchedule() -> StationScheduleCache {
-		guard let data = UserDefaults.standard.data(forKey: cacheKey) else {
+		ubiquitousStore.synchronize()
+
+		if let cloudData = ubiquitousStore.data(forKey: cacheKey),
+		   let cloudCache = decodeCache(from: cloudData) {
+			if let localData = UserDefaults.standard.data(forKey: cacheKey),
+			   let localCache = decodeCache(from: localData),
+			   let localUpdatedAt = localCache.updatedAt,
+			   let cloudUpdatedAt = cloudCache.updatedAt,
+			   localUpdatedAt > cloudUpdatedAt {
+				return localCache
+			}
+
+			UserDefaults.standard.set(cloudData, forKey: cacheKey)
+			return cloudCache
+		}
+
+		guard let localData = UserDefaults.standard.data(forKey: cacheKey),
+			  let localCache = decodeCache(from: localData) else {
 			return StationScheduleCache(updatedAt: nil, stationSchedules: [])
 		}
 
-		do {
-			let decoder = JSONDecoder()
-			decoder.dateDecodingStrategy = .iso8601
-			return try decoder.decode(StationScheduleCache.self, from: data)
-		} catch {
-			return StationScheduleCache(updatedAt: nil, stationSchedules: [])
-		}
+		return localCache
 	}
 
 	@discardableResult
@@ -149,6 +163,17 @@ final class StationScheduleStore {
 		return fallbackFormatter.date(from: string)
 	}
 
+	private func decodeCache(from data: Data) -> StationScheduleCache? {
+		do {
+			let decoder = JSONDecoder()
+			decoder.dateDecodingStrategy = .iso8601
+			return try decoder.decode(StationScheduleCache.self, from: data)
+		} catch {
+			print("Failed to decode station schedule cache: \(error)")
+			return nil
+		}
+	}
+
 	private func buildCache(from observations: [Observation]) -> StationScheduleCache {
 		let mapped = observations.compactMap(Self.makeScheduleObservation)
 
@@ -185,12 +210,16 @@ final class StationScheduleStore {
 			encoder.dateEncodingStrategy = .iso8601
 			let data = try encoder.encode(cache)
 			UserDefaults.standard.set(data, forKey: cacheKey)
+			ubiquitousStore.set(data, forKey: cacheKey)
+			ubiquitousStore.synchronize()
 		} catch {
 			print("Failed to save station schedule cache: \(error)")
 		}
 	}
 	func clearCache() {
 		UserDefaults.standard.removeObject(forKey: cacheKey)
+		ubiquitousStore.removeObject(forKey: cacheKey)
+		ubiquitousStore.synchronize()
 	}
 }
 

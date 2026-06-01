@@ -20,11 +20,32 @@ final class StationTimeLineViewModel: ObservableObject {
 
 	private let store = StationScheduleStore.shared
 	private let scheduleWindowDuration: TimeInterval = 3 * 24 * 60 * 60
+	private var iCloudObserver: NSObjectProtocol?
 
 	init() {
 		let now = Date()
 		startDate = now
 		endDate = now.addingTimeInterval(scheduleWindowDuration)
+
+		iCloudObserver = NotificationCenter.default.addObserver(
+			forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+			object: NSUbiquitousKeyValueStore.default,
+			queue: .main
+		) { [weak self] _ in
+			guard let self else {
+				return
+			}
+
+			Task { @MainActor in
+				self.loadCachedSchedule()
+			}
+		}
+	}
+
+	deinit {
+		if let iCloudObserver {
+			NotificationCenter.default.removeObserver(iCloudObserver)
+		}
 	}
 
 	var cacheStatusText: String {
