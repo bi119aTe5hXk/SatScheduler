@@ -38,12 +38,29 @@ struct AutoScheduleStationTimelineRow: View {
 
 	private var plannedCandidates: [AutoScheduleCandidate] {
 		plan.selectedCandidates.filter { candidate in
-			candidate.request.groundStationID == stationID && executionResult(for: candidate) == nil
+			guard candidate.request.groundStationID == stationID else {
+				return false
+			}
+
+			guard let executionResult = executionResult(for: candidate) else {
+				return true
+			}
+
+			switch executionResult.status {
+			case .pending, .running:
+				return true
+			case .success, .failure:
+				return false
+			}
 		}
 	}
 
 	private var successfulCandidates: [AutoScheduleCandidate] {
-		executionResults.compactMap { result in
+		guard successfulCreatedObservations.isEmpty else {
+			return []
+		}
+
+		return executionResults.compactMap { result in
 			guard result.candidate.request.groundStationID == stationID,
 				  case .success = result.status else {
 				return nil
@@ -64,11 +81,29 @@ struct AutoScheduleStationTimelineRow: View {
 		}
 	}
 
+	private var hasExecutionResults: Bool {
+		executionResults.contains { result in
+			result.candidate.request.groundStationID == stationID
+		}
+	}
+
 	var body: some View {
 		VStack(alignment: .leading, spacing: 6) {
 			Text(stationName)
 				.font(.caption)
 				.foregroundStyle(.secondary)
+
+			if hasExecutionResults {
+				HStack(spacing: 10) {
+					Label("Pending", systemImage: "rectangle.fill")
+						.foregroundStyle(.yellow)
+					Label("Success", systemImage: "rectangle.fill")
+						.foregroundStyle(.green)
+					Label("Failed", systemImage: "rectangle.fill")
+						.foregroundStyle(.red)
+				}
+				.font(.caption2)
+			}
 
 			AutoScheduleTimelineBar(
 				start: plan.start,

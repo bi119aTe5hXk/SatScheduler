@@ -17,6 +17,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var isPlanning = false
 	@Published var planningStatusText = ""
 	@Published var isScheduling = false
+	@Published private(set) var isRetryingFailedPasses = false
 	@Published var scheduleProgress: (created: Int, total: Int) = (0, 0)
 	@Published var executionResults: [AutoScheduleExecutionResult] = []
 	@Published var message: String?
@@ -25,6 +26,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	private let scheduler: AutoScheduler
 	private let settingsStore: AutoScheduleSettingsStore
 	private var cancellables = Set<AnyCancellable>()
+	private var isSchedulingCancellationRequested = false
 
 	init(
 		planner: AutoSchedulePlanner = AutoSchedulePlanner(),
@@ -56,6 +58,80 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 				}
 			}
 			.store(in: &cancellables)
+	}
+
+	var hasRetryableFailedPasses: Bool {
+		guard let plan else {
+			return false
+		}
+
+		return !failedCandidates(in: plan).isEmpty
+	}
+
+	var hasCompletedScheduleSuccessfully: Bool {
+		guard let plan, !plan.selectedCandidates.isEmpty else {
+			return false
+		}
+
+		return plan.selectedCandidates.allSatisfy { candidate in
+			guard let result = executionResult(for: candidate),
+				  case .success = result.status else {
+				return false
+			}
+
+			return true
+		}
+	}
+
+	var canStartScheduling: Bool {
+		guard let plan, !plan.selectedCandidates.isEmpty else {
+			return false
+		}
+
+		if hasRetryableFailedPasses {
+			return true
+		}
+
+		if hasCompletedScheduleSuccessfully {
+			return false
+		}
+
+		return plan.selectedCandidates.contains { candidate in
+			guard let result = executionResult(for: candidate) else {
+				return true
+			}
+
+			switch result.status {
+			case .pending, .running:
+				return true
+			case .success, .failure:
+				return false
+			}
+		}
+	}
+
+	var scheduleButtonTitle: String {
+		if hasRetryableFailedPasses {
+			return "Retry Failed Passes"
+		}
+
+		if hasCompletedScheduleSuccessfully {
+			return "Submitted"
+		}
+
+		return "Schedule Selected Passes"
+	}
+
+	var scheduleButtonSystemImage: String {
+		if hasRetryableFailedPasses {
+			return "arrow.clockwise"
+		}
+
+		if hasCompletedScheduleSuccessfully {
+			return "checkmark.circle"
+		}
+
+		return "paperplane"
 	}
 
 	func makePlan(
@@ -103,23 +179,45 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 	}
 
+	func cancelScheduling() {
+		isSchedulingCancellationRequested = true
+	}
+
 	func scheduleSelectedPasses() async {
-		guard let plan, !plan.selectedCandidates.isEmpty, !isScheduling else {
+		guard let plan, !plan.selectedCandidates.isEmpty, !isScheduling, canStartScheduling else {
+			return
+		}
+
+		let shouldRetryFailedPasses = hasRetryableFailedPasses
+		let schedulingPlan = shouldRetryFailedPasses ? retryPlan(from: plan) : plan
+		guard !schedulingPlan.selectedCandidates.isEmpty else {
 			return
 		}
 
 		isScheduling = true
-		scheduleProgress = (0, plan.selectedCount)
-		createdObservations = []
-		resetExecutionResults(for: plan)
-		resetTimelineObservations(for: plan)
-		defer {
-			isScheduling = false
+		isRetryingFailedPasses = shouldRetryFailedPasses
+		isSchedulingCancellationRequested = false
+		scheduleProgress = (0, schedulingPlan.selectedCount)
+
+		if shouldRetryFailedPasses {
+			markCandidatesPending(schedulingPlan.selectedCandidates)
+		} else {
+			createdObservations = []
+			resetExecutionResults(for: plan)
+			resetTimelineObservations(for: plan)
 		}
 
-		let summary = await scheduler.schedulePlanContinuingOnError(
-			plan,
-			delayBetweenRequests: 3,
+		defer {
+			isScheduling = false
+			isRetryingFailedPasses = false
+			isSchedulingCancellationRequested = false
+		}
+
+		let summary = await scheduler.schedulePlanBatch(
+			schedulingPlan,
+			shouldCancel: {
+				self.isSchedulingCancellationRequested
+			},
 			onResult: { result in
 				self.updateExecutionResult(result)
 			},
@@ -128,15 +226,29 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 			}
 		)
 
-		createdObservations = summary.createdObservations
+		guard !isSchedulingCancellationRequested else {
+			message = nil
+			return
+		}
+
+		let mergedCreatedObservations = mergedObservations(
+			createdObservations + summary.createdObservations
+		)
+		createdObservations = mergedCreatedObservations
+
 		if !summary.createdObservations.isEmpty {
 			StationScheduleStore.shared.mergeCreatedObservations(summary.createdObservations)
 		}
 		updateTimelineObservations(
 			existingObservations: plan.existingObservations,
-			createdObservations: summary.createdObservations
+			createdObservations: mergedCreatedObservations
 		)
-		message = "Created \(summary.createdObservations.count) observation(s), failed \(summary.failureResults.count) request(s)."
+
+		if shouldRetryFailedPasses {
+			message = "Retried failed passes. Created \(summary.createdObservations.count) observation(s), failed \(summary.failureResults.count) request(s)."
+		} else {
+			message = "Created \(summary.createdObservations.count) observation(s), failed \(summary.failureResults.count) request(s)."
+		}
 	}
 	
 	func resortCurrentPlan(priorityMode: AutoSchedulePriorityMode) {
@@ -155,6 +267,41 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	func executionResult(for candidate: AutoScheduleCandidate) -> AutoScheduleExecutionResult? {
 		executionResults.first { result in
 			result.candidate.id == candidate.id
+		}
+	}
+
+	private func failedCandidates(in plan: AutoSchedulePlan) -> [AutoScheduleCandidate] {
+		plan.selectedCandidates.filter { candidate in
+			guard let result = executionResult(for: candidate),
+				  case .failure = result.status else {
+				return false
+			}
+
+			return true
+		}
+	}
+
+	private func retryPlan(from plan: AutoSchedulePlan) -> AutoSchedulePlan {
+		AutoSchedulePlan(
+			createdAt: plan.createdAt,
+			start: plan.start,
+			end: plan.end,
+			priorityMode: plan.priorityMode,
+			candidates: plan.candidates,
+			selectedCandidates: failedCandidates(in: plan),
+			skippedCandidates: plan.skippedCandidates,
+			existingObservations: plan.existingObservations
+		)
+	}
+
+	private func markCandidatesPending(_ candidates: [AutoScheduleCandidate]) {
+		for candidate in candidates {
+			updateExecutionResult(
+				AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .pending
+				)
+			)
 		}
 	}
 
@@ -178,6 +325,16 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 
 		timelineObservations = sortedObservations(Array(observationsByID.values))
+	}
+
+	private func mergedObservations(_ observations: [Observation]) -> [Observation] {
+		var observationsByID: [Int: Observation] = [:]
+
+		for observation in observations {
+			observationsByID[observation.id] = observation
+		}
+
+		return sortedObservations(Array(observationsByID.values))
 	}
 
 	private func sortedObservations(_ observations: [Observation]) -> [Observation] {

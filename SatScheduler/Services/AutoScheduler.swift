@@ -105,6 +105,176 @@ final class AutoScheduler {
 		)
 	}
 
+	func schedulePlanBatch(
+		_ plan: AutoSchedulePlan,
+		shouldCancel: (@MainActor () -> Bool)? = nil,
+		onResult: (@MainActor (AutoScheduleExecutionResult) -> Void)? = nil,
+		onProgress: (@MainActor (Int, Int) -> Void)? = nil
+	) async -> AutoScheduleExecutionSummary {
+		let candidates = plan.selectedCandidates
+		guard !candidates.isEmpty else {
+			return AutoScheduleExecutionSummary(results: [], createdObservations: [])
+		}
+
+		if await shouldCancel?() == true {
+			let cancelledResults = candidates.map { candidate in
+				AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .failure(message: "Cancelled")
+				)
+			}
+
+			for result in cancelledResults {
+				await onResult?(result)
+			}
+			await onProgress?(0, candidates.count)
+
+			return AutoScheduleExecutionSummary(
+				results: cancelledResults,
+				createdObservations: []
+			)
+		}
+
+		for candidate in candidates {
+			await onResult?(
+				AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .running
+				)
+			)
+		}
+
+		let shouldCancelBeforeRequest = await shouldCancel?() == true
+		if Task.isCancelled || shouldCancelBeforeRequest {
+			let cancelledResults = candidates.map { candidate in
+				AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .failure(message: "Cancelled")
+				)
+			}
+
+			for result in cancelledResults {
+				await onResult?(result)
+			}
+			await onProgress?(0, candidates.count)
+
+			return AutoScheduleExecutionSummary(
+				results: cancelledResults,
+				createdObservations: []
+			)
+		}
+
+		do {
+			let createdObservations = try await networkService.createObservations(plan.requests)
+			let matchedObservationIDsByCandidateID = matchCreatedObservations(
+				createdObservations,
+				to: candidates
+			)
+
+			var results: [AutoScheduleExecutionResult] = []
+
+			for candidate in candidates {
+				let matchedObservationIDs = matchedObservationIDsByCandidateID[candidate.id] ?? []
+
+				let result: AutoScheduleExecutionResult
+				if matchedObservationIDs.isEmpty {
+					result = AutoScheduleExecutionResult(
+						candidate: candidate,
+						status: .failure(message: "Observation was not returned by SatNOGS Network.")
+					)
+				} else {
+					result = AutoScheduleExecutionResult(
+						candidate: candidate,
+						status: .success(createdCount: matchedObservationIDs.count)
+					)
+				}
+
+				results.append(result)
+				await onResult?(result)
+			}
+
+			await onProgress?(createdObservations.count, candidates.count)
+
+			return AutoScheduleExecutionSummary(
+				results: results,
+				createdObservations: createdObservations
+			)
+		} catch {
+			let shouldCancelAfterError = await shouldCancel?() == true
+			if Task.isCancelled || error is CancellationError || shouldCancelAfterError {
+				let cancelledResults = candidates.map { candidate in
+					AutoScheduleExecutionResult(
+						candidate: candidate,
+						status: .failure(message: "Cancelled")
+					)
+				}
+
+				for result in cancelledResults {
+					await onResult?(result)
+				}
+				await onProgress?(0, candidates.count)
+
+				return AutoScheduleExecutionSummary(
+					results: cancelledResults,
+					createdObservations: []
+				)
+			}
+
+			let failureResults = candidates.map { candidate in
+				AutoScheduleExecutionResult(
+					candidate: candidate,
+					status: .failure(message: error.localizedDescription)
+				)
+			}
+
+			for result in failureResults {
+				await onResult?(result)
+			}
+			await onProgress?(0, candidates.count)
+
+			return AutoScheduleExecutionSummary(
+				results: failureResults,
+				createdObservations: []
+			)
+		}
+	}
+
+	private func matchCreatedObservations(
+		_ observations: [Observation],
+		to candidates: [AutoScheduleCandidate]
+	) -> [AutoScheduleCandidate.ID: [Int]] {
+		var unmatchedObservations = observations
+		var matchedObservationIDsByCandidateID: [AutoScheduleCandidate.ID: [Int]] = [:]
+
+		for candidate in candidates {
+			guard let matchIndex = unmatchedObservations.firstIndex(where: { observation in
+				isCreatedObservation(observation, matching: candidate)
+			}) else {
+				continue
+			}
+
+			let observation = unmatchedObservations.remove(at: matchIndex)
+			matchedObservationIDsByCandidateID[candidate.id, default: []].append(observation.id)
+		}
+
+		return matchedObservationIDsByCandidateID
+	}
+
+	private func isCreatedObservation(
+		_ observation: Observation,
+		matching candidate: AutoScheduleCandidate
+	) -> Bool {
+		guard observation.ground_station == candidate.request.groundStationID,
+			  let observationStart = observation.startDate,
+			  let observationEnd = observation.endDate else {
+			return false
+		}
+
+		let startDelta = abs(observationStart.timeIntervalSince(candidate.request.start))
+		let endDelta = abs(observationEnd.timeIntervalSince(candidate.request.end))
+		return startDelta <= 60 && endDelta <= 60
+	}
+
 	func scheduleTargets(
 		_ targets: [WatchTarget],
 		from start: Date,

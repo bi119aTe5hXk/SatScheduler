@@ -14,6 +14,7 @@ struct AutoSchedulePreviewView: View {
 
 	@Environment(\.dismiss) private var dismiss
 	@StateObject private var viewModel = AutoSchedulePreviewViewModel()
+	@State private var schedulingTask: Task<Void, Never>?
 
 	var body: some View {
 		NavigationStack {
@@ -25,6 +26,7 @@ struct AutoSchedulePreviewView: View {
 				.toolbar {
 					ToolbarItem(placement: .cancellationAction) {
 						Button("Close") {
+							cancelSchedulingIfNeeded()
 							dismiss()
 						}
 					}
@@ -73,6 +75,9 @@ struct AutoSchedulePreviewView: View {
 							end: end
 						)
 					}
+				}
+				.onDisappear {
+					cancelSchedulingIfNeeded()
 				}
 		}
 	}
@@ -199,24 +204,45 @@ struct AutoSchedulePreviewView: View {
 				}
 			}
 
+			if viewModel.hasCompletedScheduleSuccessfully {
+				Text("All selected passes have already been submitted.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			} else if viewModel.hasRetryableFailedPasses {
+				Text("Retry will submit failed passes only.")
+					.font(.caption)
+					.foregroundStyle(.secondary)
+			}
+
 			Button {
-				Task {
+				schedulingTask?.cancel()
+				schedulingTask = Task {
 					await viewModel.scheduleSelectedPasses()
 				}
 			} label: {
 				if viewModel.isScheduling {
 					ProgressView()
 						.controlSize(.small)
-					Text("Scheduling...")
+					Text(viewModel.isRetryingFailedPasses ? "Retrying..." : "Scheduling...")
 				} else {
-					Label("Schedule Selected Passes", systemImage: "paperplane")
+					Label(viewModel.scheduleButtonTitle, systemImage: viewModel.scheduleButtonSystemImage)
 				}
 			}
 			.buttonStyle(.borderedProminent)
-			.disabled(viewModel.isPlanning || viewModel.isScheduling || viewModel.plan?.selectedCandidates.isEmpty != false)
+			.disabled(viewModel.isPlanning || viewModel.isScheduling || !viewModel.canStartScheduling)
 		}
 		.padding()
 		.background(viewModel.isScheduling ? AnyShapeStyle(.bar) : AnyShapeStyle(.clear))
+	}
+
+	private func cancelSchedulingIfNeeded() {
+		guard viewModel.isScheduling else {
+			return
+		}
+
+		viewModel.cancelScheduling()
+		schedulingTask?.cancel()
+		schedulingTask = nil
 	}
 
 	private func formatDateTime(_ date: Date) -> String {
