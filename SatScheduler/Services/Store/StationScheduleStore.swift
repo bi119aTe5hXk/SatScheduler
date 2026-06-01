@@ -91,25 +91,38 @@ final class StationScheduleStore {
 	func mergeCreatedObservations(_ observations: [Observation]) {
 		let current = loadCachedSchedule()
 		let mapped = observations.compactMap(Self.makeScheduleObservation)
+		guard !mapped.isEmpty else {
+			return
+		}
 
-		let existing = current.stationSchedules.flatMap(\.observations)
-		let merged = Dictionary(grouping: existing + mapped, by: { $0.stationID })
-		let timelines = merged.map { stationID, observations in
-			let sortedObservations = observations
-				.reduce(into: [Int: StationScheduleObservation]()) { result, observation in
-					result[observation.id] = observation
-				}
-				.values
-				.sorted { $0.start < $1.start }
+		var timelinesByStationID = current.stationSchedules.reduce(into: [Int: StationScheduleTimeline]()) { result, timeline in
+			result[timeline.stationID] = timeline
+		}
 
-			return StationScheduleTimeline(
+		for createdObservation in mapped {
+			let stationID = createdObservation.stationID
+			let currentTimeline = timelinesByStationID[stationID]
+			var observationsByID = (currentTimeline?.observations ?? []).reduce(into: [Int: StationScheduleObservation]()) { result, observation in
+				result[observation.id] = observation
+			}
+
+			observationsByID[createdObservation.id] = createdObservation
+
+			let stationName: String
+			if let currentTimeline, !currentTimeline.stationName.isEmpty {
+				stationName = currentTimeline.stationName
+			} else {
+				stationName = createdObservation.stationName
+			}
+
+			timelinesByStationID[stationID] = StationScheduleTimeline(
 				stationID: stationID,
-				stationName: sortedObservations.first?.stationName ?? "Station \(stationID)",
-				observations: sortedObservations
+				stationName: stationName,
+				observations: observationsByID.values.sorted { $0.start < $1.start }
 			)
 		}
-		.sorted { $0.displayName < $1.displayName }
 
+		let timelines = timelinesByStationID.values.sorted { $0.displayName < $1.displayName }
 		save(StationScheduleCache(updatedAt: Date(), stationSchedules: timelines))
 	}
 

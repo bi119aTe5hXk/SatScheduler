@@ -9,11 +9,19 @@ import SwiftUI
 
 struct AutoScheduleStationTimelineOverview: View {
 	let plan: AutoSchedulePlan
+	let timelineObservations: [Observation]
+	let createdObservations: [Observation]
+	let executionResults: [AutoScheduleExecutionResult]
+
+	private var visibleTimelineObservations: [Observation] {
+		timelineObservations.isEmpty ? plan.existingObservations : timelineObservations
+	}
 
 	private var stationIDs: [Int] {
-		let existingStationIDs = plan.existingObservations.compactMap { $0.ground_station }
+		let existingStationIDs = visibleTimelineObservations.compactMap { $0.ground_station }
 		let selectedStationIDs = plan.selectedCandidates.map { $0.request.groundStationID }
-		return Array(Set(existingStationIDs + selectedStationIDs)).sorted()
+		let executionStationIDs = executionResults.map { $0.candidate.request.groundStationID }
+		return Array(Set(existingStationIDs + selectedStationIDs + executionStationIDs)).sorted()
 	}
 
 	var body: some View {
@@ -30,7 +38,10 @@ struct AutoScheduleStationTimelineOverview: View {
 				ForEach(stationIDs, id: \.self) { stationID in
 					AutoScheduleStationTimelineRow(
 						stationID: stationID,
-						plan: plan
+						plan: plan,
+						timelineObservations: visibleTimelineObservations,
+						createdObservations: createdObservations,
+						executionResults: executionResults
 					)
 				}
 			}

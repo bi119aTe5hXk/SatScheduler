@@ -11,6 +11,9 @@ struct AutoScheduleTimelineBar: View {
 	let end: Date
 	let existingObservations: [Observation]
 	let plannedCandidates: [AutoScheduleCandidate]
+	let successfulCreatedObservations: [Observation]
+	let successfulCandidates: [AutoScheduleCandidate]
+	let failedCandidates: [AutoScheduleCandidate]
 
 	private var totalDuration: TimeInterval {
 		max(end.timeIntervalSince(start), 1)
@@ -34,6 +37,42 @@ struct AutoScheduleTimelineBar: View {
 							width: proxy.size.width
 						)
 					}
+				}
+
+				ForEach(Array(successfulCreatedObservations.enumerated()), id: \.offset) { _, observation in
+					if let observationStart = observation.startDate,
+					   let observationEnd = observation.endDate {
+						AutoScheduleTimelineBlock(
+							start: observationStart,
+							end: observationEnd,
+							rangeStart: start,
+							rangeEnd: end,
+							color: .green,
+							width: proxy.size.width
+						)
+					}
+				}
+
+				ForEach(successfulCandidates) { candidate in
+					AutoScheduleTimelineBlock(
+						start: candidate.request.start,
+						end: candidate.request.end,
+						rangeStart: start,
+						rangeEnd: end,
+						color: .green,
+						width: proxy.size.width
+					)
+				}
+
+				ForEach(failedCandidates) { candidate in
+					AutoScheduleTimelineBlock(
+						start: candidate.request.start,
+						end: candidate.request.end,
+						rangeStart: start,
+						rangeEnd: end,
+						color: .red,
+						width: proxy.size.width
+					)
 				}
 
 				ForEach(plannedCandidates) { candidate in
@@ -64,4 +103,3 @@ struct AutoScheduleTimelineBar: View {
 		return CGFloat(ratio) * width
 	}
 }
-

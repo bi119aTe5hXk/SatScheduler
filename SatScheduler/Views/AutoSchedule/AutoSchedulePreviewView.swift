@@ -115,7 +115,12 @@ struct AutoSchedulePreviewView: View {
 					}
 
 					Section("Station Timeline") {
-						AutoScheduleStationTimelineOverview(plan: plan)
+						AutoScheduleStationTimelineOverview(
+							plan: plan,
+							timelineObservations: viewModel.timelineObservations,
+							createdObservations: viewModel.createdObservations,
+							executionResults: viewModel.executionResults
+						)
 					}
 
 					if !viewModel.createdObservations.isEmpty {

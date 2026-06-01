@@ -13,6 +13,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var priorityMode: AutoSchedulePriorityMode = .watchListOrder
 	@Published var plan: AutoSchedulePlan?
 	@Published var createdObservations: [Observation] = []
+	@Published var timelineObservations: [Observation] = []
 	@Published var isPlanning = false
 	@Published var planningStatusText = ""
 	@Published var isScheduling = false
@@ -51,6 +52,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 				if let plan = self.plan {
 					self.plan = plan.resorted(priorityMode: priorityMode)
 					self.resetExecutionResults(for: self.plan)
+					self.resetTimelineObservations(for: self.plan)
 				}
 			}
 			.store(in: &cancellables)
@@ -93,8 +95,10 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 
 			createdObservations = []
 			resetExecutionResults(for: plan)
+			resetTimelineObservations(for: plan)
 			message = nil
 		} catch {
+			timelineObservations = []
 			message = "Failed to calculate auto schedule plan: \(error.localizedDescription)"
 		}
 	}
@@ -108,6 +112,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		scheduleProgress = (0, plan.selectedCount)
 		createdObservations = []
 		resetExecutionResults(for: plan)
+		resetTimelineObservations(for: plan)
 		defer {
 			isScheduling = false
 		}
@@ -124,6 +129,13 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		)
 
 		createdObservations = summary.createdObservations
+		if !summary.createdObservations.isEmpty {
+			StationScheduleStore.shared.mergeCreatedObservations(summary.createdObservations)
+		}
+		updateTimelineObservations(
+			existingObservations: plan.existingObservations,
+			createdObservations: summary.createdObservations
+		)
 		message = "Created \(summary.createdObservations.count) observation(s), failed \(summary.failureResults.count) request(s)."
 	}
 	
@@ -136,12 +148,43 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		if let plan {
 			self.plan = plan.resorted(priorityMode: priorityMode)
 			resetExecutionResults(for: self.plan)
+			resetTimelineObservations(for: self.plan)
 		}
 	}
 
 	func executionResult(for candidate: AutoScheduleCandidate) -> AutoScheduleExecutionResult? {
 		executionResults.first { result in
 			result.candidate.id == candidate.id
+		}
+	}
+
+	private func resetTimelineObservations(for plan: AutoSchedulePlan?) {
+		guard let plan else {
+			timelineObservations = []
+			return
+		}
+
+		timelineObservations = sortedObservations(plan.existingObservations)
+	}
+
+	private func updateTimelineObservations(
+		existingObservations: [Observation],
+		createdObservations: [Observation]
+	) {
+		var observationsByID: [Int: Observation] = [:]
+
+		for observation in existingObservations + createdObservations {
+			observationsByID[observation.id] = observation
+		}
+
+		timelineObservations = sortedObservations(Array(observationsByID.values))
+	}
+
+	private func sortedObservations(_ observations: [Observation]) -> [Observation] {
+		observations.sorted { lhs, rhs in
+			let lhsStart = lhs.startDate ?? .distantPast
+			let rhsStart = rhs.startDate ?? .distantPast
+			return lhsStart < rhsStart
 		}
 	}
 

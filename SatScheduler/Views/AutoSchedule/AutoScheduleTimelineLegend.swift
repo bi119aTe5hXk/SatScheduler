@@ -12,7 +12,8 @@ struct AutoScheduleTimelineLegend: View {
 		HStack(spacing: 12) {
 			legendItem(color: .blue, title: "Existing")
 			legendItem(color: .yellow, title: "Planned")
-			legendItem(color: .green, title: "Now")
+			legendItem(color: .green, title: "Success")
+			legendItem(color: .red, title: "Error")
 		}
 		.font(.caption)
 		.foregroundStyle(.secondary)
