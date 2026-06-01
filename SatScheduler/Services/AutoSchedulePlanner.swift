@@ -21,7 +21,13 @@ final class AutoSchedulePlanner {
 	) async throws -> AutoSchedulePlan {
 		var candidates: [AutoScheduleCandidate] = []
 		await onProgress?(AutoSchedulePlanningStatus(message: "Preparing watch targets..."))
-		let enabledTargets = targets.filter { $0.enabled }
+		await onProgress?(AutoSchedulePlanningStatus(message: "Fetching online ground station list..."))
+		let onlineStationIDs = try await fetchOnlineStationIDs()
+		let enabledTargets = targets.filter { target in
+			target.enabled && target.stationIDs.contains { stationID in
+				onlineStationIDs.contains(stationID)
+			}
+		}
 
 		await onProgress?(AutoSchedulePlanningStatus(message: "Fetching TLE data from local cache or SatNOGS DB..."))
 		let tleBySatelliteID = try await fetchTLEs(for: enabledTargets)
@@ -34,7 +40,12 @@ final class AutoSchedulePlanner {
 				continue
 			}
 
-			let stations = try await resolveStations(for: target)
+			let stations = try await resolveStations(for: target).filter { station in
+				onlineStationIDs.contains(station.id)
+			}
+			guard !stations.isEmpty else {
+				continue
+			}
 
 			for station in stations {
 				await onProgress?(AutoSchedulePlanningStatus(message: "Predicting pass windows for \(target.name) at \(station.name)..."))
@@ -364,6 +375,11 @@ final class AutoSchedulePlanner {
 	private func normalizeAzimuth(_ azimuth: Double) -> Double {
 		let normalized = azimuth.truncatingRemainder(dividingBy: 360)
 		return normalized >= 0 ? normalized : normalized + 360
+	}
+
+	private func fetchOnlineStationIDs() async throws -> Set<Int> {
+		let onlineStations = try await networkService.fetchOnlineStations()
+		return Set(onlineStations.map(\.id))
 	}
 
 	private func fetchTLEs(for targets: [WatchTarget]) async throws -> [String: TLEEntry] {
