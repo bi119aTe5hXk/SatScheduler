@@ -215,6 +215,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 
 		let summary = await scheduler.schedulePlanBatch(
 			schedulingPlan,
+			batchSize: settingsStore.settings.scheduleBatchSize,
 			shouldCancel: {
 				self.isSchedulingCancellationRequested
 			},

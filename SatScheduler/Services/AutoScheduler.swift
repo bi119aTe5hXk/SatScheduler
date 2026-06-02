@@ -107,6 +107,8 @@ final class AutoScheduler {
 
 	func schedulePlanBatch(
 		_ plan: AutoSchedulePlan,
+		batchSize: Int = 50,
+		delayBetweenBatches: TimeInterval = 1,
 		shouldCancel: (@MainActor () -> Bool)? = nil,
 		onResult: (@MainActor (AutoScheduleExecutionResult) -> Void)? = nil,
 		onProgress: (@MainActor (Int, Int) -> Void)? = nil
@@ -164,45 +166,15 @@ final class AutoScheduler {
 			)
 		}
 
-		do {
-			let createdObservations = try await networkService.createObservations(plan.requests)
-			let matchedObservationIDsByCandidateID = matchCreatedObservations(
-				createdObservations,
-				to: candidates
-			)
+		let safeBatchSize = max(1, batchSize)
+		var results: [AutoScheduleExecutionResult] = []
+		var allCreatedObservations: [Observation] = []
 
-			var results: [AutoScheduleExecutionResult] = []
-
-			for candidate in candidates {
-				let matchedObservationIDs = matchedObservationIDsByCandidateID[candidate.id] ?? []
-
-				let result: AutoScheduleExecutionResult
-				if matchedObservationIDs.isEmpty {
-					result = AutoScheduleExecutionResult(
-						candidate: candidate,
-						status: .failure(message: "Observation was not returned by SatNOGS Network.")
-					)
-				} else {
-					result = AutoScheduleExecutionResult(
-						candidate: candidate,
-						status: .success(createdCount: matchedObservationIDs.count)
-					)
-				}
-
-				results.append(result)
-				await onResult?(result)
-			}
-
-			await onProgress?(createdObservations.count, candidates.count)
-
-			return AutoScheduleExecutionSummary(
-				results: results,
-				createdObservations: createdObservations
-			)
-		} catch {
-			let shouldCancelAfterError = await shouldCancel?() == true
-			if Task.isCancelled || error is CancellationError || shouldCancelAfterError {
-				let cancelledResults = candidates.map { candidate in
+		for batchStartIndex in stride(from: 0, to: candidates.count, by: safeBatchSize) {
+			let shouldCancelBeforeBatch = await shouldCancel?() == true
+			if Task.isCancelled || shouldCancelBeforeBatch {
+				let remainingCandidates = Array(candidates[batchStartIndex..<candidates.count])
+				let cancelledResults = remainingCandidates.map { candidate in
 					AutoScheduleExecutionResult(
 						candidate: candidate,
 						status: .failure(message: "Cancelled")
@@ -212,31 +184,94 @@ final class AutoScheduler {
 				for result in cancelledResults {
 					await onResult?(result)
 				}
-				await onProgress?(0, candidates.count)
+				results.append(contentsOf: cancelledResults)
+				await onProgress?(allCreatedObservations.count, candidates.count)
 
 				return AutoScheduleExecutionSummary(
-					results: cancelledResults,
-					createdObservations: []
+					results: results,
+					createdObservations: allCreatedObservations
 				)
 			}
 
-			let failureResults = candidates.map { candidate in
-				AutoScheduleExecutionResult(
-					candidate: candidate,
-					status: .failure(message: error.localizedDescription)
+			let batchEndIndex = min(batchStartIndex + safeBatchSize, candidates.count)
+			let batchCandidates = Array(candidates[batchStartIndex..<batchEndIndex])
+			let batchRequests = batchCandidates.map(\.request)
+
+			do {
+				let batchCreatedObservations = try await networkService.createObservations(batchRequests)
+				allCreatedObservations.append(contentsOf: batchCreatedObservations)
+
+				let matchedObservationIDsByCandidateID = matchCreatedObservations(
+					batchCreatedObservations,
+					to: batchCandidates
 				)
+
+				for candidate in batchCandidates {
+					let matchedObservationIDs = matchedObservationIDsByCandidateID[candidate.id] ?? []
+
+					let result: AutoScheduleExecutionResult
+					if matchedObservationIDs.isEmpty {
+						result = AutoScheduleExecutionResult(
+							candidate: candidate,
+							status: .failure(message: "Observation was not returned by SatNOGS Network.")
+						)
+					} else {
+						result = AutoScheduleExecutionResult(
+							candidate: candidate,
+							status: .success(createdCount: matchedObservationIDs.count)
+						)
+					}
+
+					results.append(result)
+					await onResult?(result)
+				}
+			} catch {
+				let shouldCancelAfterError = await shouldCancel?() == true
+				if Task.isCancelled || error is CancellationError || shouldCancelAfterError {
+					let remainingCandidates = Array(candidates[batchStartIndex..<candidates.count])
+					let cancelledResults = remainingCandidates.map { candidate in
+						AutoScheduleExecutionResult(
+							candidate: candidate,
+							status: .failure(message: "Cancelled")
+						)
+					}
+
+					for result in cancelledResults {
+						await onResult?(result)
+					}
+					results.append(contentsOf: cancelledResults)
+					await onProgress?(allCreatedObservations.count, candidates.count)
+
+					return AutoScheduleExecutionSummary(
+						results: results,
+						createdObservations: allCreatedObservations
+					)
+				}
+
+				let failureResults = batchCandidates.map { candidate in
+					AutoScheduleExecutionResult(
+						candidate: candidate,
+						status: .failure(message: error.localizedDescription)
+					)
+				}
+
+				for result in failureResults {
+					await onResult?(result)
+				}
+				results.append(contentsOf: failureResults)
 			}
 
-			for result in failureResults {
-				await onResult?(result)
-			}
-			await onProgress?(0, candidates.count)
+			await onProgress?(allCreatedObservations.count, candidates.count)
 
-			return AutoScheduleExecutionSummary(
-				results: failureResults,
-				createdObservations: []
-			)
+			if batchEndIndex < candidates.count, delayBetweenBatches > 0 {
+				try? await Task.sleep(nanoseconds: UInt64(delayBetweenBatches * 1_000_000_000))
+			}
 		}
+
+		return AutoScheduleExecutionSummary(
+			results: results,
+			createdObservations: allCreatedObservations
+		)
 	}
 
 	private func matchCreatedObservations(

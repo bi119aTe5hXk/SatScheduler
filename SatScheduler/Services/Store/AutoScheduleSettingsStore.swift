@@ -11,6 +11,13 @@ import Combine
 struct AutoScheduleSettings: Codable, Equatable {
 	var showPreviewBeforeScheduling: Bool = true
 	var priorityMode: AutoSchedulePriorityMode = .watchListOrder
+	var scheduleBatchSize: Int = 10
+
+	var normalized: AutoScheduleSettings {
+		var normalizedSettings = self
+		normalizedSettings.scheduleBatchSize = min(max(scheduleBatchSize, 1), 50)
+		return normalizedSettings
+	}
 }
 
 @MainActor
@@ -50,20 +57,26 @@ final class AutoScheduleSettingsStore: ObservableObject {
 		save(newSettings)
 	}
 
+	func update(scheduleBatchSize: Int) {
+		var newSettings = settings
+		newSettings.scheduleBatchSize = min(max(scheduleBatchSize, 1), 50)
+		save(newSettings)
+	}
+
 	private func loadSettings() {
 		guard let data = store.data(forKey: settingsKey),
 			  let decoded = try? JSONDecoder().decode(AutoScheduleSettings.self, from: data) else {
 			settings = AutoScheduleSettings()
 			return
 		}
-
-		settings = decoded
+		settings = decoded.normalized
 	}
 
 	private func save(_ newSettings: AutoScheduleSettings) {
-		settings = newSettings
+		let normalizedSettings = newSettings.normalized
+		settings = normalizedSettings
 
-		if let data = try? JSONEncoder().encode(newSettings) {
+		if let data = try? JSONEncoder().encode(normalizedSettings) {
 			store.set(data, forKey: settingsKey)
 			store.synchronize()
 		}

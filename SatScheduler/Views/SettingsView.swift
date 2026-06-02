@@ -148,6 +148,21 @@ struct SettingsView: View {
 						.font(.caption)
 						.foregroundStyle(.secondary)
 
+					Stepper(
+						value: Binding(
+							get: { autoScheduleSettingsStore.settings.scheduleBatchSize },
+							set: { autoScheduleSettingsStore.update(scheduleBatchSize: $0) }
+						),
+						in: 1...50,
+						step: 1
+					) {
+						LabeledContent("Schedule Batch Size", value: "\(autoScheduleSettingsStore.settings.scheduleBatchSize)")
+					}
+
+					Text("Controls how many observation requests are submitted in one API call. Use a smaller value if a whole batch fails due to one problematic request.")
+						.font(.caption)
+						.foregroundStyle(.secondary)
+
 					Text("These settings are synced with iCloud key-value storage when available.")
 						.font(.caption)
 						.foregroundStyle(.secondary)
