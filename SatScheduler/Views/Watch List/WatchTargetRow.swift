@@ -11,14 +11,12 @@ struct WatchTargetRow: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 6) {
-			Text(target.name)
+			Text(target.satelliteName ?? target.name)
 				.font(.headline)
 
-			if let satelliteName = target.satelliteName, !satelliteName.isEmpty {
-				Text(satelliteName)
-					.font(.subheadline)
-					.foregroundStyle(.secondary)
-			}
+			Text("Satellite ID: \(target.satelliteID)")
+				.font(.subheadline)
+				.foregroundStyle(.secondary)
 
 			if let transmitterDescription = target.transmitterDescription, !transmitterDescription.isEmpty {
 				Text(transmitterDescription)

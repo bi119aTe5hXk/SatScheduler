@@ -126,6 +126,7 @@ struct AutoSchedulePreviewView: View {
 							createdObservations: viewModel.createdObservations,
 							executionResults: viewModel.executionResults
 						)
+						.id(plan.id)
 					}
 
 					if !viewModel.createdObservations.isEmpty {
@@ -172,6 +173,13 @@ struct AutoSchedulePreviewView: View {
 								}
 
 								viewModel.moveSelectedCandidates(fromOffsets: source, toOffset: destination)
+							}
+							.onDelete { offsets in
+								guard !viewModel.isScheduling else {
+									return
+								}
+
+								viewModel.removeSelectedCandidates(atOffsets: offsets)
 							}
 						}
 					}

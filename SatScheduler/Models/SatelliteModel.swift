@@ -17,6 +17,7 @@ struct SatelliteModel: Codable, Identifiable, Hashable {
 	let launched: String?
 	let operatorName: String?
 	let countries: String?
+	let in_orbit: Bool?
 	let is_frequency_violator: Bool?
 
 	var id: String {
@@ -33,6 +34,7 @@ struct SatelliteModel: Codable, Identifiable, Hashable {
 		case launched
 		case operatorName = "operator"
 		case countries
+		case in_orbit
 		case is_frequency_violator
 	}
 
@@ -46,6 +48,7 @@ struct SatelliteModel: Codable, Identifiable, Hashable {
 		launched: String? = nil,
 		operatorName: String? = nil,
 		countries: String? = nil,
+		in_orbit: Bool? = nil,
 		is_frequency_violator: Bool? = nil
 	) {
 		self.sat_id = sat_id
@@ -57,6 +60,7 @@ struct SatelliteModel: Codable, Identifiable, Hashable {
 		self.launched = launched
 		self.operatorName = operatorName
 		self.countries = countries
+		self.in_orbit = in_orbit
 		self.is_frequency_violator = is_frequency_violator
 	}
 
@@ -71,6 +75,7 @@ struct SatelliteModel: Codable, Identifiable, Hashable {
 		self.launched = try container.decodeIfPresent(String.self, forKey: .launched)
 		self.operatorName = try container.decodeIfPresent(String.self, forKey: .operatorName)
 		self.countries = try container.decodeIfPresent(String.self, forKey: .countries)
+		self.in_orbit = try container.decodeIfPresent(Bool.self, forKey: .in_orbit)
 		self.is_frequency_violator = try container.decodeIfPresent(Bool.self, forKey: .is_frequency_violator)
 
 		if let namesString = try? container.decodeIfPresent(String.self, forKey: .names) {

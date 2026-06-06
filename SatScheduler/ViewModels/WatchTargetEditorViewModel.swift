@@ -25,8 +25,11 @@ final class WatchTargetEditorViewModel: ObservableObject {
 	@Published var isLoadingTransmitters = false
 	@Published var isLoadingStations = false
 	@Published var isLoadingRecommendedTransmitter = false
+	@Published var isRefreshingEditingSatellite = false
 	@Published var recommendedTransmitterID: String?
 	@Published var recommendedTransmitterObservationCount: Int = 0
+	@Published var unavailableSatelliteWarning: String?
+	@Published var shouldPromptDeleteUnavailableSatellite = false
 	
 	@Published var stationSearchText = ""
 
@@ -132,6 +135,41 @@ final class WatchTargetEditorViewModel: ObservableObject {
 		return Int((mhz * 1_000_000).rounded())
 	}
 
+	var editingSatelliteDisplayName: String {
+		if let selectedSatelliteID,
+		   let satellite = satellites.first(where: { $0.id == selectedSatelliteID }) {
+			return displayName(for: satellite)
+		}
+
+		return editingTarget?.satelliteName?.nilIfBlank
+			?? editingTarget?.name.nilIfBlank
+			?? editingTarget?.satelliteID
+			?? "Satellite"
+	}
+
+	var editingSatelliteStatusText: String? {
+		guard let selectedSatelliteID,
+			  let satellite = satellites.first(where: { $0.id == selectedSatelliteID }) else {
+			return nil
+		}
+
+		var details: [String] = []
+
+		if let norad = satellite.norad_cat_id {
+			details.append("NORAD: \(norad)")
+		}
+
+		if let status = satellite.status?.nilIfBlank {
+			details.append("Status: \(status)")
+		}
+
+		if let countries = satellite.countries?.nilIfBlank {
+			details.append(countries)
+		}
+
+		return details.isEmpty ? nil : details.joined(separator: " / ")
+	}
+
 	func selectTransmitter(_ transmitter: Transmitter) {
 		selectedTransmitterID = transmitter.id
 
@@ -179,6 +217,7 @@ final class WatchTargetEditorViewModel: ObservableObject {
 
 		satelliteSearchText = editingTarget.satelliteName ?? editingTarget.name
 
+		await refreshEditingSatelliteInfoIfNeeded()
 		await loadTransmittersForEditing(satelliteID: editingTarget.satelliteID)
 	}
 
@@ -201,6 +240,59 @@ final class WatchTargetEditorViewModel: ObservableObject {
 			stations = try await networkService.fetchOnlineStations()
 		} catch {
 			errorMessage = error.localizedDescription
+		}
+	}
+
+	func dismissUnavailableSatellitePrompt() {
+		shouldPromptDeleteUnavailableSatellite = false
+	}
+
+	private func refreshEditingSatelliteInfoIfNeeded() async {
+		guard let editingTarget else {
+			return
+		}
+
+		isRefreshingEditingSatellite = true
+		defer {
+			isRefreshingEditingSatellite = false
+		}
+
+		do {
+			let aliveSatellites = try await dbService.fetchAliveSatellites(satelliteID: editingTarget.satelliteID)
+
+			if let satellite = matchingSatellite(in: aliveSatellites, satelliteID: editingTarget.satelliteID) {
+				upsertSatellite(satellite)
+				satelliteSearchText = displayName(for: satellite)
+				unavailableSatelliteWarning = nil
+				shouldPromptDeleteUnavailableSatellite = false
+				return
+			}
+
+			let matchingSatellites = try await dbService.fetchSatellites(satelliteID: editingTarget.satelliteID)
+			let satellite = matchingSatellite(in: matchingSatellites, satelliteID: editingTarget.satelliteID)
+
+			if let satellite {
+				upsertSatellite(satellite)
+			}
+
+			let status = satellite?.status?.nilIfBlank ?? "not found"
+			let inOrbit = satellite?.in_orbit.map { $0 ? "true" : "false" } ?? "unknown"
+			unavailableSatelliteWarning = "This satellite is no longer listed as alive and in orbit in SatNOGS DB. Status: \(status), in orbit: \(inOrbit)."
+			shouldPromptDeleteUnavailableSatellite = true
+		} catch {
+			errorMessage = "Failed to refresh satellite information: \(error.localizedDescription)"
+		}
+	}
+
+	private func matchingSatellite(in satellites: [SatelliteModel], satelliteID: String) -> SatelliteModel? {
+		satellites.first { $0.id == satelliteID } ?? satellites.first
+	}
+
+	private func upsertSatellite(_ satellite: SatelliteModel) {
+		if let index = satellites.firstIndex(where: { $0.id == satellite.id }) {
+			satellites[index] = satellite
+		} else {
+			satellites.append(satellite)
 		}
 	}
 
@@ -365,7 +457,8 @@ final class WatchTargetEditorViewModel: ObservableObject {
 
 		let satellite = satellites.first { $0.id == satelliteID }
 		let transmitter = transmitters.first { $0.id == transmitterID }
-		let satelliteName = satellite.map(displayName(for:))
+		let satelliteName = satellite.map(displayName(for:)) ?? editingTarget?.satelliteName?.nilIfBlank
+		let name = satelliteName ?? editingTarget?.name.nilIfBlank ?? satelliteID
 		let transmitterDescription = transmitter.map(displayName(for:))
 		let centerFrequency = centerFrequencyHz
 		
@@ -396,7 +489,7 @@ final class WatchTargetEditorViewModel: ObservableObject {
 		)
 
 		return WatchTarget(
-			name: satelliteName ?? satelliteID,
+			name: name,
 			satelliteID: satelliteID,
 			satelliteName: satelliteName,
 			transmitterID: transmitterID,
@@ -456,5 +549,12 @@ final class WatchTargetEditorViewModel: ObservableObject {
 		}
 
 		return "\(name) / \(frequencyText)"
+	}
+}
+
+private extension String {
+	var nilIfBlank: String? {
+		let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+		return trimmed.isEmpty ? nil : trimmed
 	}
 }

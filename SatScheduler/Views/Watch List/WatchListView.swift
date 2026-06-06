@@ -151,7 +151,13 @@ struct WatchListView: View {
 				.adaptiveWatchSheetSizing()
 			}
 			.sheet(item: $editingTarget) { target in
-				WatchTargetEditorView(editingTarget: target) { updatedTarget in
+				WatchTargetEditorView(
+					editingTarget: target,
+					onDelete: { targetToDelete in
+						deleteTarget(targetToDelete)
+						editingTarget = nil
+					}
+				) { updatedTarget in
 					viewModel.updateTarget(updatedTarget)
 					editingTarget = nil
 				}

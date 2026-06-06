@@ -12,6 +12,7 @@ struct WatchTargetEditorView: View {
 
 	let editingTarget: WatchTarget?
 	let onSave: (WatchTarget) -> Void
+	let onDelete: ((WatchTarget) -> Void)?
 
 	@StateObject var viewModel: WatchTargetEditorViewModel
 	@State private var requireStationDaylight: Bool
@@ -22,10 +23,12 @@ struct WatchTargetEditorView: View {
 
 	init(
 		editingTarget: WatchTarget? = nil,
+		onDelete: ((WatchTarget) -> Void)? = nil,
 		onSave: @escaping (WatchTarget) -> Void
 	) {
 		self.editingTarget = editingTarget
 		self.onSave = onSave
+		self.onDelete = onDelete
 		_viewModel = StateObject(wrappedValue: WatchTargetEditorViewModel(editingTarget: editingTarget))
 		_requireStationDaylight = State(initialValue: editingTarget?.requiresStationDaylight ?? false)
 		_minPeakElevationText = State(initialValue: Self.textValue(for: editingTarget?.minPeakElevation))
@@ -40,14 +43,36 @@ struct WatchTargetEditorView: View {
 				Section("Satellite") {
 					if let editingTarget {
 						VStack(alignment: .leading, spacing: 6) {
-							Text(editingTarget.satelliteName ?? editingTarget.name)
+							Text(viewModel.editingSatelliteDisplayName)
 								.font(.headline)
 
 							Text("Satellite ID: \(editingTarget.satelliteID)")
 								.font(.caption)
 								.foregroundStyle(.secondary)
+
+							if let statusText = viewModel.editingSatelliteStatusText {
+								Text(statusText)
+									.font(.caption)
+									.foregroundStyle(.secondary)
+							}
 						}
 						.padding(.vertical, 4)
+
+						if viewModel.isRefreshingEditingSatellite {
+							HStack(spacing: 6) {
+								ProgressView()
+									.controlSize(.small)
+								Text("Refreshing satellite info...")
+							}
+							.font(.caption)
+							.foregroundStyle(.secondary)
+						}
+
+						if let unavailableSatelliteWarning = viewModel.unavailableSatelliteWarning {
+							Text(unavailableSatelliteWarning)
+								.font(.caption)
+								.foregroundStyle(.orange)
+						}
 
 						Text("Satellite cannot be changed while editing. Create a new watch target to use another satellite.")
 							.font(.caption)
@@ -338,6 +363,26 @@ struct WatchTargetEditorView: View {
 			.task {
 				await viewModel.loadInitialData()
 				await viewModel.prepareForEditingIfNeeded()
+			}
+			.alert(
+				"Satellite unavailable",
+				isPresented: Binding(
+					get: { viewModel.shouldPromptDeleteUnavailableSatellite },
+					set: { if !$0 { viewModel.dismissUnavailableSatellitePrompt() } }
+				)
+			) {
+				Button("Keep", role: .cancel) {
+					viewModel.dismissUnavailableSatellitePrompt()
+				}
+
+				if let editingTarget, let onDelete {
+					Button("Delete Watch Target", role: .destructive) {
+						onDelete(editingTarget)
+						dismiss()
+					}
+				}
+			} message: {
+				Text(viewModel.unavailableSatelliteWarning ?? "This satellite is no longer listed as alive and in orbit in SatNOGS DB.")
 			}
 		}
 //		.frame(minWidth: 620, minHeight: 640)

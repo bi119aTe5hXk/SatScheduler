@@ -379,14 +379,43 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 			return
 		}
 
-		let remainingCandidates = currentPlan.candidates.filter { $0.id != candidate.id }
-		let remainingSelectedCandidates = currentPlan.selectedCandidates.filter { $0.id != candidate.id }
-		let remainingSkippedCandidates = currentPlan.skippedCandidates.filter { skippedCandidate in
-			skippedCandidate.candidate.id != candidate.id &&
-			skippedCandidate.conflictingCandidate?.id != candidate.id
+		removeSelectedCandidates(
+			Set([candidate.id]),
+			from: currentPlan
+		)
+	}
+
+	func removeSelectedCandidates(atOffsets offsets: IndexSet) {
+		guard !isScheduling, let currentPlan = plan else {
+			return
 		}
 
-		plan = AutoSchedulePlan(
+		let candidateIDs = Set(offsets.compactMap { index in
+			currentPlan.selectedCandidates.indices.contains(index)
+				? currentPlan.selectedCandidates[index].id
+				: nil
+		})
+
+		removeSelectedCandidates(candidateIDs, from: currentPlan)
+	}
+
+	private func removeSelectedCandidates(
+		_ candidateIDs: Set<UUID>,
+		from currentPlan: AutoSchedulePlan
+	) {
+		guard !candidateIDs.isEmpty else {
+			return
+		}
+
+		let remainingCandidates = currentPlan.candidates.filter { !candidateIDs.contains($0.id) }
+		let remainingSelectedCandidates = currentPlan.selectedCandidates.filter { !candidateIDs.contains($0.id) }
+		let remainingSkippedCandidates = currentPlan.skippedCandidates.filter { skippedCandidate in
+			let conflictingCandidateWasRemoved = skippedCandidate.conflictingCandidate.map { candidateIDs.contains($0.id) } ?? false
+			return !candidateIDs.contains(skippedCandidate.candidate.id) &&
+			!conflictingCandidateWasRemoved
+		}
+
+		let updatedPlan = AutoSchedulePlan(
 			createdAt: currentPlan.createdAt,
 			start: currentPlan.start,
 			end: currentPlan.end,
@@ -396,10 +425,12 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 			skippedCandidates: remainingSkippedCandidates,
 			existingObservations: currentPlan.existingObservations
 		)
+		plan = updatedPlan
 
 		executionResults.removeAll { result in
-			result.candidate.id == candidate.id
+			candidateIDs.contains(result.candidate.id)
 		}
+		resetTimelineObservations(for: updatedPlan)
 		scheduleProgress = (createdObservations.count, remainingSelectedCandidates.count)
 	}
 	

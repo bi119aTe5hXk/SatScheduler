@@ -25,6 +25,29 @@ final class SatNOGSDBService {
 		)
 	}
 
+	func fetchAliveSatellites(satelliteID: String) async throws -> [SatelliteModel] {
+		try await client.get(
+			host: .db,
+			path: "satellites/",
+			queryItems: [
+				URLQueryItem(name: "norad_cat_id", value: ""),
+				URLQueryItem(name: "status", value: "alive"),
+				URLQueryItem(name: "in_orbit", value: "true"),
+				URLQueryItem(name: "sat_id", value: satelliteID)
+			]
+		)
+	}
+
+	func fetchSatellites(satelliteID: String) async throws -> [SatelliteModel] {
+		try await client.get(
+			host: .db,
+			path: "satellites/",
+			queryItems: [
+				URLQueryItem(name: "sat_id", value: satelliteID)
+			]
+		)
+	}
+
 	func fetchTransmitters(satelliteID: String) async throws -> [Transmitter] {
 		let transmitters: [Transmitter] = try await client.get(
 			host: .db,
@@ -110,5 +133,4 @@ final class SatNOGSDBService {
 		}
 	}
 }
-
 
