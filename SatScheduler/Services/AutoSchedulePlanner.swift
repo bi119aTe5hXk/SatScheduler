@@ -17,6 +17,7 @@ final class AutoSchedulePlanner {
 		start: Date,
 		end: Date,
 		priorityMode: AutoSchedulePriorityMode,
+		forceRefresh: Bool = false,
 		onProgress: ((AutoSchedulePlanningStatus) async -> Void)? = nil
 	) async throws -> AutoSchedulePlan {
 		var candidates: [AutoScheduleCandidate] = []
@@ -30,7 +31,10 @@ final class AutoSchedulePlanner {
 		}
 
 		await onProgress?(AutoSchedulePlanningStatus(message: "Fetching TLE data from local cache or SatNOGS DB..."))
-		let tleBySatelliteID = try await fetchTLEs(for: enabledTargets)
+		let tleBySatelliteID = try await fetchTLEs(
+			for: enabledTargets,
+			forceRefresh: forceRefresh
+		)
 
 		await onProgress?(AutoSchedulePlanningStatus(message: "Predicting satellite pass windows from TLE data..."))
 		for (targetIndex, target) in enabledTargets.enumerated() {
@@ -382,14 +386,18 @@ final class AutoSchedulePlanner {
 		return Set(onlineStations.map(\.id))
 	}
 
-	private func fetchTLEs(for targets: [WatchTarget]) async throws -> [String: TLEEntry] {
+	private func fetchTLEs(
+		for targets: [WatchTarget],
+		forceRefresh: Bool
+	) async throws -> [String: TLEEntry] {
 		let satelliteIDs = Array(Set(targets.map { $0.satelliteID })).sorted()
 		guard !satelliteIDs.isEmpty else {
 			return [:]
 		}
 
 		let entries = try await TLECacheStore.shared.fetchLatestTLEs(
-			satelliteIDs: satelliteIDs
+			satelliteIDs: satelliteIDs,
+			forceRefresh: forceRefresh
 		)
 		return Dictionary(uniqueKeysWithValues: entries.map { ($0.sat_id, $0) })
 	}

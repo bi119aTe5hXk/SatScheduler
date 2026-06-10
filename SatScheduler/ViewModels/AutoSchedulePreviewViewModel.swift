@@ -137,7 +137,8 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	func makePlan(
 		targets: [WatchTarget],
 		start: Date,
-		end: Date
+		end: Date,
+		forceRefresh: Bool = false
 	) async {
 		guard !isPlanning else {
 			return
@@ -151,7 +152,8 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 
 		do {
-			if let currentPlan = plan,
+			if !forceRefresh,
+			   let currentPlan = plan,
 			   currentPlan.start == start,
 			   currentPlan.end == end {
 				plan = currentPlan.resorted(priorityMode: priorityMode)
@@ -161,6 +163,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 					start: start,
 					end: end,
 					priorityMode: priorityMode,
+					forceRefresh: forceRefresh,
 					onProgress: { status in
 						await MainActor.run {
 							self.planningStatusText = status.message

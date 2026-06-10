@@ -42,7 +42,8 @@ struct AutoSchedulePreviewView: View {
 								await viewModel.makePlan(
 									targets: targets,
 									start: start,
-									end: end
+									end: end,
+									forceRefresh: true
 								)
 							}
 						} label: {
@@ -50,7 +51,7 @@ struct AutoSchedulePreviewView: View {
 								ProgressView()
 									.controlSize(.small)
 							} else {
-								Label("Recalculate", systemImage: "arrow.clockwise")
+								Label("Refresh Plan", systemImage: "arrow.clockwise")
 							}
 						}
 						.disabled(viewModel.isPlanning || viewModel.isScheduling)
