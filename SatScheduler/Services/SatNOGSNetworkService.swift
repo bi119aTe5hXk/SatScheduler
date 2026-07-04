@@ -166,7 +166,8 @@ final class SatNOGSNetworkService {
 	func fetchScheduledObservations(
 		start: Date,
 		end: Date,
-		groundStationIDs: [Int] = []
+		groundStationIDs: [Int] = [],
+		onPageFetched: ((Int) async -> Void)? = nil
 	) async throws -> [Observation] {
 		guard !groundStationIDs.isEmpty else {
 			throw APIError.parameterError
@@ -182,7 +183,8 @@ final class SatNOGSNetworkService {
 
 			let stationObservations = try await fetchAllObservationPages(
 				queryItems: stationItems,
-				logPrefix: "future observations for station \(groundStationID)"
+				logPrefix: "future observations for station \(groundStationID)",
+				onPageFetched: onPageFetched
 			)
 
 			observations.append(contentsOf: stationObservations)
@@ -224,19 +226,22 @@ final class SatNOGSNetworkService {
 
 	private func fetchAllObservationPages(
 		queryItems: [URLQueryItem],
-		logPrefix: String
+		logPrefix: String,
+		onPageFetched: ((Int) async -> Void)? = nil
 	) async throws -> [Observation] {
 		try await fetchObservationPages(
 			queryItems: queryItems,
 			maxPages: nil,
-			logPrefix: logPrefix
+			logPrefix: logPrefix,
+			onPageFetched: onPageFetched
 		)
 	}
 
 	private func fetchObservationPages(
 		queryItems: [URLQueryItem],
 		maxPages: Int?,
-		logPrefix: String
+		logPrefix: String,
+		onPageFetched: ((Int) async -> Void)? = nil
 	) async throws -> [Observation] {
 		var observations: [Observation] = []
 		var nextCursor: String?
@@ -267,6 +272,7 @@ final class SatNOGSNetworkService {
 
 			fetchedPageCount += 1
 			observations.append(contentsOf: page.results)
+			await onPageFetched?(fetchedPageCount)
 
 			let resolvedNextCursor = page.nextCursor ?? Self.fallbackNextCursor(from: page.results)
 			if let resolvedNextCursor, seenCursors.contains(resolvedNextCursor) {

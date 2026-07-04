@@ -19,6 +19,7 @@ struct WatchListView: View {
 	@State private var isShowingAutoSchedulePreview = false
 	@State private var predictionPreviewTarget: WatchTarget?
 	@State private var editingTarget: WatchTarget?
+	@State private var watchSearchText = ""
 
 	var body: some View {
 		NavigationStack {
@@ -29,9 +30,15 @@ struct WatchListView: View {
 						systemImage: "dot.radiowaves.left.and.right",
 						description: Text("Add a satellite, transmitter and ground station to start scheduling observations.")
 					)
+				} else if filteredWatchTargets.isEmpty {
+					ContentUnavailableView(
+						"No Matching Watch Targets",
+						systemImage: "magnifyingglass",
+						description: Text("No satellite ID or name matches the current search.")
+					)
 				} else {
 					List {
-						ForEach(viewModel.watchTargets) { target in
+						ForEach(filteredWatchTargets) { target in
 						#if os(macOS)
 							HStack(spacing: 8) {
 								WatchTargetRow(target: target)
@@ -98,7 +105,13 @@ struct WatchListView: View {
 								}
 						#endif
 						}
-						.onMove(perform: viewModel.moveTargets)
+						.onMove { source, destination in
+							guard normalizedWatchSearchText.isEmpty else {
+								return
+							}
+
+							viewModel.moveTargets(from: source, to: destination)
+						}
 					}
 					.refreshable {
 						viewModel.loadWatchTargets()
@@ -106,6 +119,11 @@ struct WatchListView: View {
 				}
 			}
 			.navigationTitle("Watch List")
+			.searchable(
+				text: $watchSearchText,
+				placement: .automatic,
+				prompt: "Search satellite ID or name"
+			)
 			.toolbar {
 				ToolbarItem(placement: .cancellationAction) {
 
@@ -178,6 +196,32 @@ struct WatchListView: View {
 			}
 			.task {
 				viewModel.loadWatchTargets()
+			}
+		}
+	}
+
+	private var normalizedWatchSearchText: String {
+		watchSearchText
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased()
+	}
+
+	private var filteredWatchTargets: [WatchTarget] {
+		let keyword = normalizedWatchSearchText
+		guard !keyword.isEmpty else {
+			return viewModel.watchTargets
+		}
+
+		return viewModel.watchTargets.filter { target in
+			let searchableValues = [
+				target.satelliteID,
+				target.satelliteName ?? "",
+				target.name,
+				target.transmitterDescription ?? ""
+			]
+
+			return searchableValues.contains { value in
+				value.lowercased().contains(keyword)
 			}
 		}
 	}

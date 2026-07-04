@@ -45,9 +45,8 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			var timelines: [StationPassTimeline] = []
 			loadingStatusText = "Calculating satellite pass windows from TLE data..."
 
-			for stationID in target.stationIDs {
-				let stationName = stationSnapshots[stationID]?.name ?? "Station \(stationID)"
-				loadingStatusText = "Calculating pass windows for \(stationName)..."
+			for (index, stationID) in target.stationIDs.enumerated() {
+				loadingStatusText = "Calculating pass windows: page \(index + 1) / \(target.stationIDs.count)"
 				guard let station = stationSnapshots[stationID] else {
 					continue
 				}
@@ -111,22 +110,23 @@ final class WatchTargetPredictionPreviewViewModel: ObservableObject {
 			let requestEnd = requests.map(\.end).max() ?? endDate
 
 			loadingStatusText = "Fetching scheduled observations for selected ground stations..."
-			let stationNameByID = Dictionary(
-				uniqueKeysWithValues: predictedTimelines.map { timeline in
-					(timeline.stationID, timeline.stationName)
-				}
-			)
 			var existingObservations: [Observation] = []
 			let networkService = SatNOGSNetworkService()
+			var fetchedObservationPageCount = 0
 
 			for (index, stationID) in stationIDs.enumerated() {
-				let stationName = stationNameByID[stationID] ?? "Station \(stationID)"
-				loadingStatusText = "Fetching scheduled observations for \(stationName)..."
+				loadingStatusText = "Fetching scheduled observations: page \(index + 1) / \(stationIDs.count)"
 
 				let stationObservations = try await networkService.fetchScheduledObservations(
 					start: requestStart,
 					end: requestEnd,
-					groundStationIDs: [stationID]
+					groundStationIDs: [stationID],
+					onPageFetched: { _ in
+						fetchedObservationPageCount += 1
+						await MainActor.run {
+							self.loadingStatusText = "Fetching scheduled observations: page \(fetchedObservationPageCount)"
+						}
+					}
 				)
 				existingObservations.append(contentsOf: stationObservations)
 

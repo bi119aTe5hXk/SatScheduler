@@ -86,16 +86,25 @@ struct AutoSchedulePreviewView: View {
 	@ViewBuilder
 	private var contentView: some View {
 		if viewModel.isPlanning && viewModel.plan == nil {
-			VStack(spacing: 12) {
+			VStack(spacing: 14) {
 				ProgressView()
-				Text(viewModel.planningStatusText.isEmpty ? "Calculating schedule plan..." : viewModel.planningStatusText)
-					.font(.headline)
-					.multilineTextAlignment(.center)
-					.padding(.horizontal)
+				AutoSchedulePlanningStatusLogView(
+					entries: viewModel.planningStatusEntries,
+					fallbackText: viewModel.planningStatusText.isEmpty ? "Calculating schedule plan..." : viewModel.planningStatusText
+				)
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
 			List {
+				if viewModel.isPlanning {
+					Section("Refresh Progress") {
+						AutoSchedulePlanningStatusLogView(
+							entries: viewModel.planningStatusEntries,
+							fallbackText: viewModel.planningStatusText.isEmpty ? "Refreshing schedule plan..." : viewModel.planningStatusText
+						)
+					}
+				}
+
 				Section("Priority") {
 					Picker("Priority mode", selection: $viewModel.priorityMode) {
 						ForEach(AutoSchedulePriorityMode.allCases) { mode in
@@ -144,6 +153,8 @@ struct AutoSchedulePreviewView: View {
 								systemImage: "calendar.badge.exclamationmark",
 								description: Text("No pass matches the current filters and priority mode.")
 							)
+							.frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
+							.listRowInsets(EdgeInsets())
 						} else {
 							ForEach(plan.selectedCandidates) { candidate in
 								if viewModel.isScheduling {
@@ -259,5 +270,46 @@ struct AutoSchedulePreviewView: View {
 		formatter.dateStyle = .short
 		formatter.timeStyle = .short
 		return formatter.string(from: date)
+	}
+}
+
+private struct AutoSchedulePlanningStatusLogView: View {
+	let entries: [AutoSchedulePlanningLogEntry]
+	let fallbackText: String
+
+	var body: some View {
+		VStack(alignment: .center, spacing: 10) {
+			if let latestEntry = entries.first {
+				Text(latestEntry.message)
+					.font(.body)
+					.foregroundStyle(.primary)
+					.lineLimit(3)
+					.multilineTextAlignment(.center)
+					.frame(maxWidth: .infinity, alignment: .center)
+					.id("latest-planning-status")
+
+				if entries.count > 1 {
+					VStack(alignment: .center, spacing: 6) {
+						ForEach(Array(entries.dropFirst().prefix(5))) { entry in
+							Text(entry.message)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+								.lineLimit(2)
+								.multilineTextAlignment(.center)
+								.frame(maxWidth: .infinity, alignment: .center)
+								.transition(.opacity)
+						}
+					}
+					.animation(.easeOut(duration: 0.2), value: entries)
+				}
+			} else {
+				Text(fallbackText)
+					.font(.body)
+					.foregroundStyle(.primary)
+					.multilineTextAlignment(.center)
+					.frame(maxWidth: .infinity, alignment: .center)
+			}
+		}
+		.padding(.horizontal)
 	}
 }

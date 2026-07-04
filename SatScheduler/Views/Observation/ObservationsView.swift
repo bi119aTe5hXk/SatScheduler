@@ -12,11 +12,17 @@ struct ObservationsView: View {
 	@StateObject private var observerIDStore = ObserverIDStore.shared
 	@State private var observerIDDraft = ""
 	@State private var isShowingObserverIDEditor = false
+	@State private var observationSearchText = ""
 
 	var body: some View {
 		NavigationStack {
 			contentView
 				.navigationTitle(observationsTitle)
+				.searchable(
+					text: $observationSearchText,
+					placement: .automatic,
+					prompt: "Search satellite ID, name or station"
+				)
 				.toolbar {
 					ToolbarItem(placement: .primaryAction) {
 						Button {
@@ -114,15 +120,25 @@ struct ObservationsView: View {
 					.foregroundStyle(.secondary)
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
+		} else if filteredObservations.isEmpty {
+			ContentUnavailableView(
+				"No Matching Observations",
+				systemImage: "magnifyingglass",
+				description: Text("No satellite ID, name, station or transmitter matches the current search.")
+			)
 		} else {
 			List {
-				ForEach(viewModel.observations) { observation in
+				ForEach(filteredObservations) { observation in
 					NavigationLink {
 						ObservationDetailView(observation: observation)
 					} label: {
 						ObservationRowView(observation: observation)
 					}
 					.task {
+						guard normalizedObservationSearchText.isEmpty else {
+							return
+						}
+
 						await viewModel.loadMoreUnknownObservationsIfNeeded(
 							currentObservation: observation,
 							observerID: observerID
@@ -146,6 +162,39 @@ struct ObservationsView: View {
 
 	private var observerID: Int? {
 		observerIDStore.observerID
+	}
+
+	private var normalizedObservationSearchText: String {
+		observationSearchText
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+			.lowercased()
+	}
+
+	private var filteredObservations: [Observation] {
+		let keyword = normalizedObservationSearchText
+		guard !keyword.isEmpty else {
+			return viewModel.observations
+		}
+
+		return viewModel.observations.filter { observation in
+			let searchableValues = [
+				String(observation.id),
+				observation.sat_id ?? "",
+				observation.satellite_name ?? "",
+				observation.norad_cat_id.map(String.init) ?? "",
+				observation.tle0 ?? "",
+				observation.stationDisplayName,
+				observation.ground_station.map(String.init) ?? "",
+				observation.transmitterDisplayName,
+				observation.transmitter_uuid ?? "",
+				observation.statusDisplayText,
+				observation.frequencyText
+			]
+
+			return searchableValues.contains { value in
+				value.lowercased().contains(keyword)
+			}
+		}
 	}
 
 	@MainActor

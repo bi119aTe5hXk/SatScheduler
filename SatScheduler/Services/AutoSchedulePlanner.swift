@@ -38,7 +38,7 @@ final class AutoSchedulePlanner {
 
 		await onProgress?(AutoSchedulePlanningStatus(message: "Predicting satellite pass windows from TLE data..."))
 		for (targetIndex, target) in enabledTargets.enumerated() {
-			await onProgress?(AutoSchedulePlanningStatus(message: "Predicting pass windows for \(target.name)..."))
+			await onProgress?(AutoSchedulePlanningStatus(message: "Predicting satellite pass windows: page \(targetIndex + 1) / \(enabledTargets.count)"))
 
 			guard let tle = tleBySatelliteID[target.satelliteID] else {
 				continue
@@ -51,8 +51,8 @@ final class AutoSchedulePlanner {
 				continue
 			}
 
-			for station in stations {
-				await onProgress?(AutoSchedulePlanningStatus(message: "Predicting pass windows for \(target.name) at \(station.name)..."))
+			for (stationIndex, station) in stations.enumerated() {
+				await onProgress?(AutoSchedulePlanningStatus(message: "Predicting station pass windows: page \(stationIndex + 1) / \(stations.count)"))
 				let targetCandidates = try makeCandidates(
 					target: target,
 					targetIndex: targetIndex,
@@ -278,15 +278,19 @@ final class AutoSchedulePlanner {
 		}
 
 		var observations: [Observation] = []
+		var fetchedObservationPageCount = 0
 
 		for (index, stationID) in stationIDs.enumerated() {
-			let stationName = stationNameByID[stationID] ?? "Station \(stationID)"
-			await onProgress?(AutoSchedulePlanningStatus(message: "Fetching scheduled observations for \(stationName)..."))
+			await onProgress?(AutoSchedulePlanningStatus(message: "Fetching scheduled observations: page \(index + 1) / \(stationIDs.count)"))
 
 			let stationObservations = try await networkService.fetchScheduledObservations(
 				start: start,
 				end: end,
-				groundStationIDs: [stationID]
+				groundStationIDs: [stationID],
+				onPageFetched: { _ in
+					fetchedObservationPageCount += 1
+					await onProgress?(AutoSchedulePlanningStatus(message: "Fetching scheduled observations: page \(fetchedObservationPageCount)"))
+				}
 			)
 			observations.append(contentsOf: stationObservations)
 

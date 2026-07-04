@@ -8,6 +8,11 @@
 import Foundation
 import Combine
 
+struct AutoSchedulePlanningLogEntry: Identifiable, Equatable {
+	let id = UUID()
+	let message: String
+}
+
 @MainActor
 final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var priorityMode: AutoSchedulePriorityMode = .watchListOrder
@@ -16,6 +21,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	@Published var timelineObservations: [Observation] = []
 	@Published var isPlanning = false
 	@Published var planningStatusText = ""
+	@Published var planningStatusEntries: [AutoSchedulePlanningLogEntry] = []
 	@Published var isScheduling = false
 	@Published private(set) var isRetryingFailedPasses = false
 	@Published var scheduleProgress: (created: Int, total: Int) = (0, 0)
@@ -145,7 +151,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		}
 
 		isPlanning = true
-		planningStatusText = "Preparing auto schedule plan..."
+		resetPlanningLog(with: "Preparing auto schedule plan...")
 		defer {
 			isPlanning = false
 			planningStatusText = ""
@@ -166,7 +172,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 					forceRefresh: forceRefresh,
 					onProgress: { status in
 						await MainActor.run {
-							self.planningStatusText = status.message
+							self.recordPlanningStatus(status.message)
 						}
 					}
 				)
@@ -179,6 +185,30 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 		} catch {
 			timelineObservations = []
 			message = "Failed to calculate auto schedule plan: \(error.localizedDescription)"
+		}
+	}
+
+	private func resetPlanningLog(with message: String) {
+		planningStatusText = message
+		planningStatusEntries = [
+			AutoSchedulePlanningLogEntry(message: message)
+		]
+	}
+
+	private func recordPlanningStatus(_ message: String) {
+		let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !trimmed.isEmpty, planningStatusEntries.first?.message != trimmed else {
+			return
+		}
+
+		planningStatusText = trimmed
+		planningStatusEntries.insert(
+			AutoSchedulePlanningLogEntry(message: trimmed),
+			at: 0
+		)
+
+		if planningStatusEntries.count > 6 {
+			planningStatusEntries.removeLast(planningStatusEntries.count - 6)
 		}
 	}
 

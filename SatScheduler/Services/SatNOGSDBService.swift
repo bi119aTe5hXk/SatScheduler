@@ -82,13 +82,23 @@ final class SatNOGSDBService {
 			return []
 		}
 
-		return try await client.get(
-			host: .db,
-			path: "tle/",
-			queryItems: [
-				URLQueryItem(name: "sat_id", value: uniqueSatelliteIDs.joined(separator: ","))
-			]
-		)
+		let pageSize = 50
+		var entries: [TLEEntry] = []
+
+		for startIndex in stride(from: 0, to: uniqueSatelliteIDs.count, by: pageSize) {
+			let endIndex = min(startIndex + pageSize, uniqueSatelliteIDs.count)
+			let pageSatelliteIDs = uniqueSatelliteIDs[startIndex..<endIndex]
+			let pageEntries: [TLEEntry] = try await client.get(
+				host: .db,
+				path: "tle/",
+				queryItems: [
+					URLQueryItem(name: "sat_id", value: pageSatelliteIDs.joined(separator: ","))
+				]
+			)
+			entries.append(contentsOf: pageEntries)
+		}
+
+		return entries
 	}
 
 	func fetchLatestTLE(satelliteID: String) async throws -> TLEEntry? {
@@ -133,4 +143,3 @@ final class SatNOGSDBService {
 		}
 	}
 }
-
