@@ -33,6 +33,7 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 	private let settingsStore: AutoScheduleSettingsStore
 	private var cancellables = Set<AnyCancellable>()
 	private var isSchedulingCancellationRequested = false
+	private let maxPlanningStatusEntries = 11
 
 	init(
 		planner: AutoSchedulePlanner = AutoSchedulePlanner(),
@@ -207,8 +208,8 @@ final class AutoSchedulePreviewViewModel: ObservableObject {
 			at: 0
 		)
 
-		if planningStatusEntries.count > 6 {
-			planningStatusEntries.removeLast(planningStatusEntries.count - 6)
+		if planningStatusEntries.count > maxPlanningStatusEntries {
+			planningStatusEntries.removeLast(planningStatusEntries.count - maxPlanningStatusEntries)
 		}
 	}
 

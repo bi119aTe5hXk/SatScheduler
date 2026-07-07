@@ -290,17 +290,15 @@ private struct AutoSchedulePlanningStatusLogView: View {
 
 				if entries.count > 1 {
 					VStack(alignment: .center, spacing: 6) {
-						ForEach(Array(entries.dropFirst().prefix(5))) { entry in
+						ForEach(Array(entries.dropFirst().prefix(10))) { entry in
 							Text(entry.message)
 								.font(.caption)
 								.foregroundStyle(.secondary)
 								.lineLimit(2)
 								.multilineTextAlignment(.center)
 								.frame(maxWidth: .infinity, alignment: .center)
-								.transition(.opacity)
 						}
 					}
-					.animation(.easeOut(duration: 0.2), value: entries)
 				}
 			} else {
 				Text(fallbackText)

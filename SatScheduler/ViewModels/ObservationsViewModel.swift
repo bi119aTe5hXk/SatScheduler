@@ -24,7 +24,10 @@ final class ObservationsViewModel: ObservableObject {
 	init() {
 		if let observerID = ObserverIDStore.shared.observerID {
 			currentObserverID = observerID
-			observations = observationsStore.loadUnknownObservations(observerID: observerID)
+			let cache = observationsStore.loadUnknownObservationsCache(observerID: observerID)
+			observations = cache.observations
+			nextCursor = cache.nextCursor
+			canLoadMore = cache.canLoadMore
 		}
 	}
 
@@ -53,7 +56,7 @@ final class ObservationsViewModel: ObservableObject {
 			observations = page.results
 			nextCursor = page.nextCursor
 			canLoadMore = nextCursor != nil
-			observationsStore.saveUnknownObservations(observations, observerID: observerID)
+			saveCache(observerID: observerID)
 			errorMessage = nil
 		} catch {
 			errorMessage = "Failed to load observations: \(error.localizedDescription)"
@@ -99,7 +102,7 @@ final class ObservationsViewModel: ObservableObject {
 			appendUniqueObservations(page.results)
 			self.nextCursor = page.nextCursor
 			canLoadMore = page.nextCursor != nil
-			observationsStore.saveUnknownObservations(observations, observerID: observerID)
+			saveCache(observerID: observerID)
 			errorMessage = nil
 		} catch {
 			errorMessage = "Failed to load more observations: \(error.localizedDescription)"
@@ -133,5 +136,16 @@ final class ObservationsViewModel: ObservableObject {
 		}
 
 		observations.append(contentsOf: uniqueNewObservations)
+	}
+
+	private func saveCache(observerID: Int) {
+		observationsStore.saveUnknownObservationsCache(
+			ObservationsStore.UnknownObservationsCache(
+				observations: observations,
+				nextCursor: nextCursor,
+				updatedAt: Date()
+			),
+			observerID: observerID
+		)
 	}
 }

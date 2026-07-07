@@ -35,6 +35,7 @@ final class WatchTargetEditorViewModel: ObservableObject {
 
 	private let dbService = SatNOGSDBService()
 	private let networkService = SatNOGSNetworkService()
+	private let aliveSatelliteCacheStore = AliveSatelliteCacheStore.shared
 	private var recommendationTask: Task<Void, Never>?
 
 	private let editingTarget: WatchTarget?
@@ -226,7 +227,7 @@ final class WatchTargetEditorViewModel: ObservableObject {
 		defer { isLoadingSatellites = false }
 
 		do {
-			satellites = try await dbService.fetchAliveSatellites()
+			satellites = try await aliveSatelliteCacheStore.fetchAliveSatellites()
 		} catch {
 			errorMessage = error.localizedDescription
 		}
